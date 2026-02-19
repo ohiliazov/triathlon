@@ -52,7 +52,7 @@ export const COLUMNS = [
 
 function parseTimeValue(val: any): number | null {
   if (val === undefined || val === null) return null;
-  
+
   if (val instanceof Date) {
     // If it's a Date object, try to extract the duration from it.
     // Excel durations often show up as dates relative to 1899-12-30
@@ -71,10 +71,10 @@ function parseTimeValue(val: any): number | null {
     }
     return val;
   }
-  
+
   const s = String(val).trim();
   if (!s) return null;
-  
+
   if (s.includes(":")) {
     const parts = s.split(":");
     if (parts.length === 3) {
@@ -92,7 +92,7 @@ function parseTimeValue(val: any): number | null {
       }
     }
   }
-  
+
   const res = parseFloat(s);
   return isNaN(res) ? null : res;
 }

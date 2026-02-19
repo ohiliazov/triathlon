@@ -60,20 +60,20 @@ export default function WassermanChart({ data, title, description, config, thres
       if (regressionData.length > 1) {
         const x = regressionData.map((d) => d.VCO2);
         const y = regressionData.map((d) => d.VE_ergo);
-        
+
         // Simple linear regression: y = mx + b
         const n = x.length;
         const sumX = x.reduce((a, b) => a + b, 0);
         const sumY = y.reduce((a, b) => a + b, 0);
         const sumXY = x.reduce((a, b, i) => a + b * y[i], 0);
         const sumXX = x.reduce((a, b) => a + b * b, 0);
-        
+
         const m = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
         const b = (sumY - m * sumX) / n;
-        
+
         const xMin = Math.min(...x);
         const xMax = Math.max(...x);
-        
+
         traces.push({
           x: [xMin, xMax],
           y: [m * xMin + b, m * xMax + b],
