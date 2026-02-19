@@ -7,9 +7,9 @@ import { Clock, Gauge, BarChart3, LayoutGrid, Info } from "lucide-react";
 
 export default function Home() {
   const [data, setData] = useState<any[] | null>(null);
-  const [thresholds, setThresholds] = useState<{ at: number; rc: number } | null>(null);
+  const [thresholds, setThresholds] = useState<{ at: number; rc: number; max: number } | null>(null);
   const [xAxisMode, setXAxisMode] = useState<"minutes" | "Speed">("minutes");
-  const [activeTab, setActiveTab] = useState<"wasserman" | "supplementary">("wasserman");
+  const [activeTab, setActiveTab] = useState<"wasserman" | "supplementary" | "respiratory">("wasserman");
 
   const handleDataLoaded = (payload: any) => {
     setData(payload.data);
@@ -24,6 +24,11 @@ export default function Home() {
   const currentLT2 = useMemo(() => {
     if (!data || !thresholds) return null;
     return data.find((d) => d.minutes >= thresholds.rc) || data[data.length - 1];
+  }, [data, thresholds]);
+
+  const currentMax = useMemo(() => {
+    if (!data || !thresholds) return null;
+    return data.find((d) => d.minutes >= thresholds.max) || data[data.length - 1];
   }, [data, thresholds]);
 
   const wassermanPanels = useMemo(() => {
@@ -150,11 +155,20 @@ export default function Home() {
         config: {
           id: 7,
           traces: [
-            { xKey: "VE_ergo", yKey: "VT", name: "VT vs VE", marker: { color: "#00008b", symbol: "circle" }, mode: "markers" },
+            { xKey: "VE_ergo", yKey: "VT", name: "VT (Tidal Vol)", marker: { color: "#00008b", symbol: "circle" }, mode: "markers", yaxis: "y" },
+            { xKey: "VE_ergo", yKey: "Rf", name: "Rf (Resp Rate)", marker: { color: "#800000", symbol: "triangle-up" }, mode: "markers", yaxis: "y2" },
           ],
           layout: {
             xaxis: { title: "VE (L/min)" },
-            yaxis: { title: "VT (L)" },
+            yaxis: { title: "VT (L)", titlefont: { color: "#00008b" }, tickfont: { color: "#00008b" } },
+            yaxis2: {
+              title: "Rf (breaths/min)",
+              titlefont: { color: "#800000" },
+              tickfont: { color: "#800000" },
+              overlaying: "y",
+              side: "right",
+              showgrid: false,
+            },
           },
         },
       },
@@ -201,11 +215,21 @@ export default function Home() {
     let fatMaxVal = 0;
     let fatMaxX = 0;
     let fatMaxHR = 0;
+    let fatMaxXStart = 0;
+    let fatMaxXEnd = 0;
     if (data.length > 0) {
       const maxFatRow = [...data].sort((a, b) => (b.FAT || 0) - (a.FAT || 0))[0];
       fatMaxVal = maxFatRow.FAT || 0;
       fatMaxX = maxFatRow[xAxisMode] || 0;
       fatMaxHR = maxFatRow.HR || 0;
+
+      // Calculate FatMax Zone (>= 90% of peak FAT)
+      const zoneThreshold = fatMaxVal * 0.9;
+      const zoneRows = data.filter((d) => (d.FAT || 0) >= zoneThreshold);
+      if (zoneRows.length > 0) {
+        fatMaxXStart = Math.min(...zoneRows.map((d) => d[xAxisMode]));
+        fatMaxXEnd = Math.max(...zoneRows.map((d) => d[xAxisMode]));
+      }
     }
 
     return [
@@ -233,13 +257,23 @@ export default function Home() {
             },
             shapes: [
               {
+                type: "rect",
+                x0: fatMaxXStart,
+                x1: fatMaxXEnd,
+                y0: 0,
+                y1: 1,
+                yref: "paper",
+                fillcolor: "rgba(16, 185, 129, 0.15)",
+                line: { width: 0 },
+              },
+              {
                 type: "line",
                 x0: fatMaxX,
                 x1: fatMaxX,
                 y0: 0,
                 y1: 1,
                 yref: "paper",
-                line: { color: "black", width: 1, dash: "dash" },
+                line: { color: "#10b981", width: 1, dash: "dot" },
               }
             ],
             annotations: [
@@ -248,9 +282,9 @@ export default function Home() {
                 y: 1.05,
                 xref: "x",
                 yref: "paper",
-                text: `FatMax HR: ${fatMaxHR.toFixed(0)}`,
+                text: `FatMax Zone (Peak HR: ${fatMaxHR.toFixed(0)})`,
                 showarrow: false,
-                font: { size: 10, color: "#800000", fontWeight: "bold" },
+                font: { size: 10, color: "#065f46", fontWeight: "bold" },
               }
             ]
           },
@@ -332,7 +366,81 @@ export default function Home() {
     ];
   }, [data, xAxisMode]);
 
-  const activePanels = activeTab === "wasserman" ? wassermanPanels : supplementaryPanels;
+  const respiratoryPanels = useMemo(() => {
+    if (!data) return [];
+
+    const xLabel = xAxisMode === "minutes" ? "Time (min)" : "Speed (km/h)";
+
+    return [
+      {
+        id: "R1",
+        title: "R1. Breathing Reserve & Ventilatory Demand",
+        description: "Breathing Reserve (BR) shows the remaining capacity of the lungs. A drop below 15-20% at peak exercise suggests a primary ventilatory limitation to exercise.",
+        config: {
+          id: "R1",
+          traces: [
+            { xKey: xAxisMode, yKey: "BR", name: "BR (L/min)", marker: { color: "#0053a4", symbol: "circle" }, mode: "markers" },
+            { xKey: xAxisMode, yKey: "VE_ergo", name: "VE (L/min)", line: { color: "#800000", dash: "dash" }, mode: "lines" },
+          ],
+          layout: {
+            xaxis: { title: xLabel },
+            yaxis: { title: "L/min" },
+          },
+        },
+      },
+      {
+        id: "R2",
+        title: "R2. Ventilatory Timing (Ti/Ttot)",
+        description: "Ti/Ttot represents the duty cycle of the inspiratory muscles. Higher values indicate higher work of breathing and potential respiratory muscle fatigue.",
+        config: {
+          id: "R2",
+          traces: [
+            { xKey: xAxisMode, yKey: "Ti/Ttot", name: "Ti/Ttot", marker: { color: "#10b981", symbol: "diamond" }, mode: "markers" },
+          ],
+          layout: {
+            xaxis: { title: xLabel },
+            yaxis: { title: "Inspiratory Duty Cycle (Ti/Ttot)", range: [0, 1] },
+          },
+        },
+      },
+      {
+        id: "R3",
+        title: "R3. Dead Space Ventilation (VD/VT)",
+        description: "VD/VT reflects the efficiency of gas exchange. It should normally decrease during exercise. Elevated values suggest V/Q mismatch or pulmonary vascular issues.",
+        config: {
+          id: "R3",
+          traces: [
+            { xKey: xAxisMode, yKey: "VD/VT e", name: "VD/VT (est)", marker: { color: "#f97316", symbol: "circle-open" }, mode: "markers" },
+          ],
+          layout: {
+            xaxis: { title: xLabel },
+            yaxis: { title: "Dead Space Ratio (VD/VT)", rangemode: "tozero" },
+          },
+        },
+      },
+      {
+        id: "R4",
+        title: "R4. Ventilatory Drive (VT/Ti)",
+        description: "VT/Ti is a measure of the central respiratory drive. It typically increases linearly with exercise intensity.",
+        config: {
+          id: "R4",
+          traces: [
+            { xKey: xAxisMode, yKey: "VT/Ti", name: "VT/Ti (L/s)", marker: { color: "#8b5cf6", symbol: "square" }, mode: "markers" },
+          ],
+          layout: {
+            xaxis: { title: xLabel },
+            yaxis: { title: "VT/Ti (L/s)" },
+          },
+        },
+      },
+    ];
+  }, [data, xAxisMode]);
+
+  const activePanels = useMemo(() => {
+    if (activeTab === "wasserman") return wassermanPanels;
+    if (activeTab === "supplementary") return supplementaryPanels;
+    return respiratoryPanels;
+  }, [activeTab, wassermanPanels, supplementaryPanels, respiratoryPanels]);
 
   const ThresholdMethodology = () => (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
@@ -345,7 +453,7 @@ export default function Home() {
           <p className="text-xs text-gray-500">How physiological thresholds (LT1/LT2) are calculated from CPET data</p>
         </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         <div className="space-y-4">
           <div className="flex items-center space-x-2">
             <span className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-green-100 text-green-700 rounded-full font-bold text-xs border border-green-200">LT1</span>
@@ -420,6 +528,51 @@ export default function Home() {
             </ul>
           </div>
         </div>
+        <div className="space-y-4">
+          <div className="flex items-center space-x-2">
+            <span className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-red-100 text-red-700 rounded-full font-bold text-xs border border-red-200">MAX</span>
+            <h3 className="font-bold text-red-700">Peak Performance (Max Effort)</h3>
+          </div>
+          <p className="text-sm text-gray-600 leading-relaxed">
+            The absolute maximal values achieved during the test. VO2max is the gold standard for aerobic capacity and cardiovascular fitness.
+          </p>
+          {currentMax && (
+            <div className="grid grid-cols-2 gap-3 p-3 bg-red-50 rounded-lg border border-red-100 text-[11px] font-medium text-red-800">
+              <div className="flex items-center space-x-2">
+                <Clock className="w-3 h-3 text-red-600" />
+                <span><b>Time:</b> {Math.floor(thresholds?.max || 0)}:{( ((thresholds?.max || 0) % 1) * 60).toFixed(0).padStart(2, "0")}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Gauge className="w-3 h-3 text-red-600" />
+                <span><b>Speed:</b> {currentMax.Speed?.toFixed(1)} km/h</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 border-2 border-red-600 rounded-full" />
+                <span><b>HR:</b> {currentMax.HR?.toFixed(0)} bpm</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 border-2 border-blue-600 rounded-full" />
+                <span><b>VO2:</b> {currentMax.VO2?.toFixed(0)} ml/min</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 border-2 border-purple-600 rounded-full" />
+                <span><b>VE:</b> {currentMax.VE_ergo?.toFixed(0)} L/min</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 border-2 border-black rounded-full" />
+                <span><b>RQ:</b> {currentMax.RQ?.toFixed(2)}</span>
+              </div>
+            </div>
+          )}
+          <div className="space-y-2">
+            <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Clinical Markers:</h4>
+            <ul className="text-xs text-gray-600 space-y-2">
+              <li className="flex items-start"><span className="text-blue-500 mr-2">●</span><span><b>VO2/kg:</b> {currentMax?.["VO2/kg"]?.toFixed(1)} mL/min/kg. Top-tier aerobic power.</span></li>
+              <li className="flex items-start"><span className="text-blue-500 mr-2">●</span><span><b>METS:</b> {(currentMax?.["VO2/kg"] / 3.5).toFixed(1)}. Metabolic equivalent of task.</span></li>
+              <li className="flex items-start"><span className="text-blue-500 mr-2">●</span><span><b>Breathing Reserve:</b> {currentMax?.BR?.toFixed(0)} L/min. Ventilatory headroom.</span></li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -454,6 +607,15 @@ export default function Home() {
                 >
                   <BarChart3 className="w-3.5 h-3.5 mr-1.5" />
                   Supplementary
+                </button>
+                <button
+                  onClick={() => setActiveTab("respiratory")}
+                  className={`flex items-center px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    activeTab === "respiratory" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5 mr-1.5" />
+                  Respiratory
                 </button>
               </div>
 
@@ -523,7 +685,11 @@ export default function Home() {
 
       <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 border-t border-gray-200 mt-8">
         <p className="text-center text-xs text-gray-400">
-          CPET Visualization: {activeTab === "wasserman" ? "Standard 9-Panel Wasserman Layout" : "Supplementary Physiological Charts"}
+          CPET Visualization: {
+            activeTab === "wasserman" ? "Standard 9-Panel Wasserman Layout" :
+            activeTab === "supplementary" ? "Supplementary Physiological Charts" :
+            "Advanced Respiratory Analysis"
+          }
         </p>
       </footer>
     </div>

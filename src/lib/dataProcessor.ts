@@ -24,6 +24,13 @@ export const SV = "SV";
 export const EEM = "EEm";
 export const TI = "Ti";
 export const TE = "Te";
+export const RF = "Rf";
+export const BR = "BR";
+export const VD_VT = "VD/VT e";
+export const TTOT = "Ttot";
+export const TI_TTOT = "Ti/Ttot";
+export const VT_TI = "VT/Ti";
+export const HRR = "HRR";
 
 export const COLUMNS = [
   VO2,
@@ -48,6 +55,13 @@ export const COLUMNS = [
   EEM,
   TI,
   TE,
+  RF,
+  BR,
+  VD_VT,
+  TTOT,
+  TI_TTOT,
+  VT_TI,
+  HRR,
 ];
 
 function parseTimeValue(val: any): number | null {
@@ -108,6 +122,7 @@ export function processLabTestExcel(buffer: Buffer) {
   // Thresholds from Wyniki
   let at_min = 8.0;
   let rc_min = 13.67;
+  let max_min = 18.0;
   const wynikiSheet = workbook.Sheets["Wyniki"];
   if (wynikiSheet) {
     const wynikiData = XLSX.utils.sheet_to_json(wynikiSheet, { header: 1 }) as any[][];
@@ -115,6 +130,7 @@ export function processLabTestExcel(buffer: Buffer) {
     if (tRow) {
       at_min = parseThresholdTime(tRow[5]) || at_min;
       rc_min = parseThresholdTime(tRow[6]) || rc_min;
+      max_min = parseThresholdTime(tRow[7]) || max_min;
     }
   }
 
@@ -154,7 +170,7 @@ export function processLabTestExcel(buffer: Buffer) {
   });
 
   // Smoothing
-  const windowSize = 6;
+  const windowSize = 4;
   const smoothCols = COLUMNS.filter((c) => c !== SPEED && c !== GRADE && c !== TIME && c !== TIME_MINUTES);
 
   smoothCols.forEach((col) => {
@@ -195,11 +211,23 @@ export function processLabTestExcel(buffer: Buffer) {
     });
   }
 
+  // Find actual peak VO2 time from smoothed data to ensure "Max" effort
+  // matches the highest VO2 point on the charts.
+  let peak_vo2_min = max_min;
+  let max_vo2 = -1;
+  processedData.forEach((row) => {
+    if (row[VO2] !== null && row[VO2] > max_vo2) {
+      max_vo2 = row[VO2];
+      peak_vo2_min = row[TIME_MINUTES];
+    }
+  });
+
   return {
     data: processedData,
     thresholds: {
       at: at_min,
       rc: rc_min,
+      max: peak_vo2_min,
     },
   };
 }
