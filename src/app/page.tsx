@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import FileUploader from "@/components/FileUploader";
-import WassermanChart from "@/components/WassermanChart";
+import {WassermanChart} from "@/components/WassermanChart";
 import { Clock, Gauge, BarChart3, LayoutGrid, Info } from "lucide-react";
 
 export default function Home() {
@@ -217,18 +217,26 @@ export default function Home() {
     let fatMaxHR = 0;
     let fatMaxXStart = 0;
     let fatMaxXEnd = 0;
+    let hasFatMaxZone = false;
     if (data.length > 0) {
-      const maxFatRow = [...data].sort((a, b) => (b.FAT || 0) - (a.FAT || 0))[0];
-      fatMaxVal = maxFatRow.FAT || 0;
+      const maxFatRow = [...data].sort((a, b) => (b["FAT%"] || 0) - (a["FAT%"] || 0))[0];
+      fatMaxVal = maxFatRow["FAT%"] || 0;
       fatMaxX = maxFatRow[xAxisMode] || 0;
       fatMaxHR = maxFatRow.HR || 0;
 
-      // Calculate FatMax Zone (>= 90% of peak FAT)
-      const zoneThreshold = fatMaxVal * 0.9;
-      const zoneRows = data.filter((d) => (d.FAT || 0) >= zoneThreshold);
-      if (zoneRows.length > 0) {
-        fatMaxXStart = Math.min(...zoneRows.map((d) => d[xAxisMode]));
-        fatMaxXEnd = Math.max(...zoneRows.map((d) => d[xAxisMode]));
+      // Calculate FatMax Zone
+      // Threshold is FAT% at Aerobic Threshold (AT/LT1)
+      const zoneThreshold = currentLT1?.["FAT%"] || 0;
+
+      if (zoneThreshold > 0) {
+        const firstIdx = data.findIndex((d) => (d["FAT%"] || 0) >= zoneThreshold);
+        const lastIdx = data.findLastIndex((d) => (d["FAT%"] || 0) >= zoneThreshold);
+
+        if (firstIdx !== -1 && lastIdx !== -1) {
+          fatMaxXStart = data[firstIdx][xAxisMode];
+          fatMaxXEnd = data[lastIdx][xAxisMode];
+          hasFatMaxZone = true;
+        }
       }
     }
 
@@ -240,13 +248,13 @@ export default function Home() {
         config: {
           id: "S1",
           traces: [
-            { xKey: xAxisMode, yKey: "FAT", name: "FAT", marker: { color: "#10b981", symbol: "circle" }, mode: "markers", yaxis: "y" },
-            { xKey: xAxisMode, yKey: "CHO", name: "CHO", marker: { color: "#f97316", symbol: "circle" }, mode: "markers", yaxis: "y" },
+            { xKey: xAxisMode, yKey: "FAT%", name: "FAT%", marker: { color: "#10b981", symbol: "circle" }, mode: "markers", yaxis: "y" },
+            { xKey: xAxisMode, yKey: "CHO%", name: "CHO%", marker: { color: "#f97316", symbol: "circle" }, mode: "markers", yaxis: "y" },
             { xKey: xAxisMode, yKey: "HR", name: "HR", line: { color: "#800000", dash: "dash" }, mode: "lines", yaxis: "y2" },
           ],
           layout: {
             xaxis: { title: xLabel },
-            yaxis: { title: "FAT, CHO (kcal/min)", rangemode: "tozero" },
+            yaxis: { title: "FAT%, CHO% (%)", range: [0, 100], tickmode: "array", tickvals: [10,20,30,40,50,60,70,80,90], ticksuffix: "%", tickformat: ".2f" },
             yaxis2: {
               title: "HR (bpm)",
               titlefont: { color: "#800000" },
@@ -256,37 +264,55 @@ export default function Home() {
               showgrid: false,
             },
             shapes: [
-              {
-                type: "rect",
+              ...(hasFatMaxZone ? [{
+                type: "rect" as const,
                 x0: fatMaxXStart,
                 x1: fatMaxXEnd,
                 y0: 0,
                 y1: 1,
-                yref: "paper",
-                fillcolor: "rgba(16, 185, 129, 0.15)",
+                yref: "paper" as const,
+                fillcolor: "rgba(16, 185, 129, 0.25)",
                 line: { width: 0 },
-              },
+                layer: "below" as const,
+              }] : []),
               {
-                type: "line",
+                type: "line" as const,
                 x0: fatMaxX,
                 x1: fatMaxX,
                 y0: 0,
                 y1: 1,
-                yref: "paper",
-                line: { color: "#10b981", width: 1, dash: "dot" },
+                yref: "paper" as const,
+                line: { color: "#10b981", width: 1.5, dash: "dot" as const },
+                layer: "above" as const,
               }
             ],
             annotations: [
               {
                 x: fatMaxX,
                 y: 1.05,
-                xref: "x",
-                yref: "paper",
-                text: `FatMax Zone (Peak HR: ${fatMaxHR.toFixed(0)})`,
+                xref: "x" as const,
+                yref: "paper" as const,
+                text: `<b>FatMax HR: ${fatMaxHR.toFixed(0)}</b>`,
                 showarrow: false,
-                font: { size: 10, color: "#065f46", fontWeight: "bold" },
+                font: { size: 10, color: "#065f46" },
               }
             ]
+          },
+        },
+      },
+      {
+        id: "S1_raw",
+        title: "S1b. Substrate Oxidation (Raw)",
+        description: "Raw fat and carbohydrate oxidation rates. Useful to see absolute substrate contribution across intensities.",
+        config: {
+          id: "S1_raw",
+          traces: [
+            { xKey: xAxisMode, yKey: "FAT", name: "FAT (kcal/min)", marker: { color: "#10b981", symbol: "circle" }, mode: "markers", yaxis: "y" },
+            { xKey: xAxisMode, yKey: "CHO", name: "CHO (kcal/min)", marker: { color: "#f97316", symbol: "circle" }, mode: "markers", yaxis: "y" },
+          ],
+          layout: {
+            xaxis: { title: xLabel },
+            yaxis: { title: "FAT, CHO (kcal/min)" },
           },
         },
       },
@@ -364,7 +390,7 @@ export default function Home() {
         },
       },
     ];
-  }, [data, xAxisMode]);
+  }, [data, xAxisMode, currentLT1]);
 
   const respiratoryPanels = useMemo(() => {
     if (!data) return [];
