@@ -18,6 +18,8 @@ export const RQ = "RQ";
 export const GRADE = "Grade";
 export const FAT = "FAT";
 export const CHO = "CHO";
+export const FAT_PC = "FAT%";
+export const CHO_PC = "CHO%";
 export const VO2_KG = "VO2/kg";
 export const CO = "CO";
 export const SV = "SV";
@@ -49,6 +51,8 @@ export const COLUMNS = [
   GRADE,
   FAT,
   CHO,
+  FAT_PC,
+  CHO_PC,
   VO2_KG,
   CO,
   SV,
@@ -210,6 +214,18 @@ export function processLabTestExcel(buffer: Buffer) {
       if (row[CHO] !== null) row[CHO] /= 1440;
     });
   }
+
+  // Calculate FAT% and CHO%
+  processedData.forEach((row) => {
+    const total = (row[FAT] || 0) + (row[CHO] || 0);
+    if (total > 0) {
+      row[FAT_PC] = (row[FAT] / total) * 100;
+      row[CHO_PC] = (row[CHO] / total) * 100;
+    } else {
+      row[FAT_PC] = 0;
+      row[CHO_PC] = 0;
+    }
+  });
 
   // Find actual peak VO2 time from smoothed data to ensure "Max" effort
   // matches the highest VO2 point on the charts.
