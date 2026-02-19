@@ -21,6 +21,7 @@ interface WassermanChartProps {
   thresholds?: {
     at: number; // in minutes
     rc: number; // in minutes
+    max?: number; // in minutes
   };
 }
 
@@ -128,27 +129,55 @@ export default function WassermanChart({ data, title, description, config, thres
   const layout = useMemo(() => {
     const shapes: any[] = [];
 
-    // Add vertical threshold lines for time-based charts
-    const isTimeX = config.traces.some((t: any) => t.xKey === "minutes");
-    if (isTimeX && thresholds) {
-      shapes.push({
-        type: "line",
-        x0: thresholds.at,
-        x1: thresholds.at,
-        y0: 0,
-        y1: 1,
-        yref: "paper",
-        line: { color: "#10b981", width: 2, dash: "dash" },
+    // Add vertical threshold lines
+    const xKey = config.traces[0]?.xKey || "minutes";
+    const getXValue = (timeMin: number) => {
+      if (xKey === "minutes") return timeMin;
+      // Find row where minutes is closest to timeMin
+      const row = data.reduce((prev, curr) => {
+        return Math.abs(curr.minutes - timeMin) < Math.abs(prev.minutes - timeMin) ? curr : prev;
       });
-      shapes.push({
-        type: "line",
-        x0: thresholds.rc,
-        x1: thresholds.rc,
-        y0: 0,
-        y1: 1,
-        yref: "paper",
-        line: { color: "#f97316", width: 2, dash: "dash" },
-      });
+      return row ? row[xKey] : null;
+    };
+
+    if (thresholds) {
+      const atX = getXValue(thresholds.at);
+      const rcX = getXValue(thresholds.rc);
+      const maxX = thresholds.max ? getXValue(thresholds.max) : null;
+
+      if (atX !== null) {
+        shapes.push({
+          type: "line",
+          x0: atX,
+          x1: atX,
+          y0: 0,
+          y1: 1,
+          yref: "paper",
+          line: { color: "#10b981", width: 2, dash: "dash" },
+        });
+      }
+      if (rcX !== null) {
+        shapes.push({
+          type: "line",
+          x0: rcX,
+          x1: rcX,
+          y0: 0,
+          y1: 1,
+          yref: "paper",
+          line: { color: "#f97316", width: 2, dash: "dash" },
+        });
+      }
+      if (maxX !== null) {
+        shapes.push({
+          type: "line",
+          x0: maxX,
+          x1: maxX,
+          y0: 0,
+          y1: 1,
+          yref: "paper",
+          line: { color: "#dc2626", width: 2, dash: "dash" },
+        });
+      }
     }
 
     const baseLayout = {
@@ -184,14 +213,14 @@ export default function WassermanChart({ data, title, description, config, thres
         title: { font: { size: 11, color: "#374151" } },
         ...(config.layout?.yaxis || {}),
       },
-      shapes,
+      shapes: [...shapes, ...(config.layout?.shapes || [])],
     };
 
     // Merge additional layout properties (like yaxis2)
     return {
       ...baseLayout,
       ...Object.fromEntries(
-        Object.entries(config.layout || {}).filter(([key]) => key !== "xaxis" && key !== "yaxis")
+        Object.entries(config.layout || {}).filter(([key]) => key !== "xaxis" && key !== "yaxis" && key !== "shapes")
       ),
     };
   }, [title, config, thresholds]);
