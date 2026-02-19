@@ -495,7 +495,7 @@ export default function Home() {
         {data && (
           <div className="space-y-8">
             <ThresholdMethodology />
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {activePanels.map((panel) => (
                 <WassermanChart
@@ -508,9 +508,9 @@ export default function Home() {
                 />
               ))}
             </div>
-            
+
             <div className="flex justify-center pt-4">
-              <button 
+              <button
                 onClick={() => setData(null)}
                 className="text-sm text-gray-500 hover:text-red-600 underline underline-offset-4 decoration-gray-300 hover:decoration-red-300 transition-colors"
               >
