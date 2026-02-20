@@ -151,6 +151,7 @@ interface WassermanChartProps {
   title: string;
   description?: string;
   config: any;
+  isSteadyMode?: boolean;
   thresholds?: {
     at: number; // in minutes
     rc: number; // in minutes
@@ -163,7 +164,7 @@ interface WassermanChartProps {
   };
 }
 
-export function WassermanChart({data, title, description, config, thresholds}: WassermanChartProps) {
+export function WassermanChart({data, title, description, config, isSteadyMode, thresholds}: WassermanChartProps) {
   const [showTooltip, setShowTooltip] = useState(false);
 
   const plotData = useMemo(() => {
@@ -174,11 +175,37 @@ export function WassermanChart({data, title, description, config, thresholds}: W
     config.traces.forEach((trace: any) => {
       const color = trace.marker?.color || trace.line?.color || getClinicalColor(trace.name, trace.yKey);
       const isTimeBased = ["minutes", "t"].includes(trace.xKey);
+      const isPercentage = (trace.name || "").includes("%") || (trace.yKey || "").includes("%");
 
       // Map x values if time based for formatting (Plotly date type works best for MM:SS)
       const xData = isTimeBased
-          ? data.map((d) => new Date(d[trace.xKey] * SECONDS_PER_MINUTE * MS_PER_SECOND).toISOString())
+          ? data.map((d) => new Date((d[trace.xKey] || 0) * SECONDS_PER_MINUTE * MS_PER_SECOND).toISOString())
           : data.map((d) => d[trace.xKey]);
+
+      if (isSteadyMode) {
+        // 0. Steady State View: Prominent markers with connecting lines
+        traces.push({
+          x: xData,
+          y: data.map((d) => d[trace.yKey]),
+          mode: "markers+lines" as const,
+          name: trace.name,
+          marker: {
+            size: 8,
+            opacity: 1,
+            color: color,
+            symbol: trace.marker?.symbol || "circle",
+          },
+          line: {
+            width: 1.5,
+            color: color,
+            dash: "dot",
+          },
+          yaxis: trace.yaxis || "y",
+          type: "scatter" as const,
+          hovertemplate: isPercentage ? "%{y:.2f}%" : "%{y:.2f}",
+        });
+        return;
+      }
 
       if (!isScatterVsScatter && !isRQ) {
         // 1. Raw Data Trace

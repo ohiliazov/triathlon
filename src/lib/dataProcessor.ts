@@ -88,6 +88,8 @@ const RQ_AEROBIC_LIMIT = 1.0;
 const EXCEL_TIME_THRESHOLD = 1.0;
 const GENERAL_SMOOTHING_WINDOW_SECONDS = 40;
 const PEAK_VO2_SMOOTHING_WINDOW_SECONDS = 30;
+const STEADY_STATE_WINDOW_SECONDS = 30;
+const SPEED_CHANGE_THRESHOLD = 0.1;
 
 export const COLUMNS = [
   VO2,
@@ -361,6 +363,43 @@ export function processLabTestExcel(buffer: Buffer) {
     }
   });
 
+  // --- Steady State Extraction (Last 30s of each step) ---
+  const stepData: any[][] = [];
+  if (processedData.length > 0) {
+    let currentStep: any[] = [processedData[0]];
+    for (let i = 1; i < processedData.length; i++) {
+      const prevSpeed = processedData[i - 1][SPEED] || 0;
+      const currentSpeed = processedData[i][SPEED] || 0;
+      if (Math.abs(currentSpeed - prevSpeed) > SPEED_CHANGE_THRESHOLD) {
+        stepData.push(currentStep);
+        currentStep = [];
+      }
+      currentStep.push(processedData[i]);
+    }
+    stepData.push(currentStep);
+  }
+
+  const steadyStateData = stepData
+    .map((step) => {
+      if (step.length === 0) return null;
+      const lastPoint = step[step.length - 1];
+      const startTime = (lastPoint[TIME] || 0) - STEADY_STATE_WINDOW_SECONDS;
+      const windowPoints = step.filter((p) => (p[TIME] || 0) >= startTime);
+      if (windowPoints.length === 0) return null;
+
+      const averagedPoint: any = { ...windowPoints[windowPoints.length - 1] };
+      COLUMNS.forEach((col) => {
+        // Don't average time, speed, grade
+        if (col === TIME || col === TIME_MINUTES || col === SPEED || col === GRADE) return;
+        const values = windowPoints.map((p) => p[col]).filter((v) => v !== null && v !== undefined);
+        if (values.length > 0) {
+          averagedPoint[col] = values.reduce((a, b) => a + b, 0) / values.length;
+        }
+      });
+      return averagedPoint;
+    })
+    .filter((p) => p !== null);
+
   // --- Advanced Physiological Threshold Detection (Gold Standard Heuristics) ---
 
   // VO2 series after global smoothing (40s centered) for robust peak/official mapping
@@ -616,6 +655,7 @@ export function processLabTestExcel(buffer: Buffer) {
 
   return {
     data: processedData,
+    steadyStateData: steadyStateData,
     thresholds: {
       at: final_at,
       rc: final_rc,
