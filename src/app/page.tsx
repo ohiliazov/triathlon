@@ -5,11 +5,28 @@ import FileUploader from "@/components/FileUploader";
 import {WassermanChart} from "@/components/WassermanChart";
 import { Clock, Gauge, BarChart3, LayoutGrid, Info } from "lucide-react";
 
+// --- Validation Thresholds ---
+const TIME_DELTA_TOLERANCE_MINUTES = 0.5;
+const HEART_RATE_DELTA_TOLERANCE_BPM = 5;
+const VO2_DELTA_TOLERANCE_ML = 50; // Added as a likely standard
+const TIME_DELTA_TOLERANCE_SECONDS = 30;
+
 export default function Home() {
   const [data, setData] = useState<any[] | null>(null);
-  const [thresholds, setThresholds] = useState<{ at: number; rc: number; max: number } | null>(null);
+  const [thresholds, setThresholds] = useState<{
+    at: number;
+    rc: number;
+    max: number;
+    calculatedAt?: number;
+    calculatedRc?: number;
+    calculatedMax?: number;
+    fatMax?: number;
+    fatMaxHr?: number;
+    fatMaxZoneStartHr?: number | null;
+    fatMaxZoneEndHr?: number | null;
+  } | null>(null);
   const [xAxisMode, setXAxisMode] = useState<"minutes" | "Speed">("minutes");
-  const [activeTab, setActiveTab] = useState<"wasserman" | "supplementary" | "respiratory">("wasserman");
+  const [activeTab, setActiveTab] = useState<"wasserman" | "supplementary" | "respiratory" | "analysis">("wasserman");
 
   const handleDataLoaded = (payload: any) => {
     setData(payload.data);
@@ -21,14 +38,29 @@ export default function Home() {
     return data.find((d) => d.minutes >= thresholds.at) || data[0];
   }, [data, thresholds]);
 
+  const calcLT1 = useMemo(() => {
+    if (!data || !thresholds?.calculatedAt) return null;
+    return data.find((d) => d.minutes >= thresholds.calculatedAt) || data[0];
+  }, [data, thresholds]);
+
   const currentLT2 = useMemo(() => {
     if (!data || !thresholds) return null;
     return data.find((d) => d.minutes >= thresholds.rc) || data[data.length - 1];
   }, [data, thresholds]);
 
+  const calcLT2 = useMemo(() => {
+    if (!data || !thresholds?.calculatedRc) return null;
+    return data.find((d) => d.minutes >= thresholds.calculatedRc) || data[data.length - 1];
+  }, [data, thresholds]);
+
   const currentMax = useMemo(() => {
     if (!data || !thresholds) return null;
     return data.find((d) => d.minutes >= thresholds.max) || data[data.length - 1];
+  }, [data, thresholds]);
+
+  const calcMax = useMemo(() => {
+    if (!data || !thresholds?.calculatedMax) return null;
+    return data.find((d) => d.minutes >= thresholds.calculatedMax) || data[data.length - 1];
   }, [data, thresholds]);
 
   const wassermanPanels = useMemo(() => {
@@ -40,7 +72,7 @@ export default function Home() {
       {
         id: 1,
         title: "1. Ventilation vs. Time",
-        description: "Tracks ventilatory demand. Look for the inflection point where VE_ergo increases out of proportion to Speed.",
+        description: "Minute Ventilation (VE) represents the total volume of air breathed per minute. The inflection point (VT1/AT) indicates where the body begins to increase breathing more rapidly to clear excess CO2 from buffering lactic acid.",
         config: {
           id: 1,
           traces: [
@@ -55,7 +87,7 @@ export default function Home() {
       {
         id: 2,
         title: "2. Cardiovascular Response",
-        description: "VO2/HR should rise and eventually plateau. HR should increase linearly with Speed/t. Sudden flattening or drops in VO2/HR during active work indicate cardiovascular limitation.",
+        description: "Heart Rate (HR) and Oxygen Pulse (VO2/HR) track cardiovascular efficiency. VO2/HR reflects stroke volume and oxygen extraction; a plateau or drop at high intensity can signal a stroke volume limitation (O2 pulse failure).",
         config: {
           id: 2,
           traces: [
@@ -79,7 +111,7 @@ export default function Home() {
       {
         id: 3,
         title: "3. Metabolic Gas Exchange",
-        description: "VO2 and VCO2 should rise linearly. Because there is no recovery data, the plot ends at peak values. Note: Units in this file are mL/min, not L/min.",
+        description: "VO2 (Oxygen uptake) and VCO2 (Carbon dioxide output) are the core metabolic markers. The ratio of VCO2 to VO2 (RER) helps determine the primary fuel source and identify the metabolic crossover from fat to carbohydrate dominance.",
         config: {
           id: 3,
           traces: [
@@ -96,7 +128,7 @@ export default function Home() {
       {
         id: 4,
         title: "4. Ventilatory Efficiency",
-        description: "Evaluates dead space and V/Q mismatch. The slope (VE/VCO2 slope) is highly prognostic.",
+        description: "The VE/VCO2 slope measures ventilatory efficiency—how much ventilation is required to eliminate a given amount of CO2. Higher slopes (>34) can indicate inefficient gas exchange, often due to increased physiological dead space or pulmonary issues.",
         config: {
           id: 4,
           traces: [
@@ -111,7 +143,7 @@ export default function Home() {
       {
         id: 5,
         title: "5. V-Slope & HR vs VO2",
-        description: "Used to find Anaerobic Threshold (AT). Find where VCO2 slope steepens relative to VO2 slope (crossing 1.0). Cross-reference with 'AT' timestamp from 'Wyniki.csv' (00:08:00).",
+        description: "The V-Slope method identifies the Aerobic Threshold (AT) by detecting the 'breakpoint' where VCO2 production begins to accelerate relative to VO2 consumption due to the onset of anaerobic buffering.",
         config: {
           id: 5,
           traces: [
@@ -135,7 +167,7 @@ export default function Home() {
       {
         id: 6,
         title: "6. Ventilatory Equivalents",
-        description: "Pinpoints thresholds. AT (VT1) occurs when VE/VO2 rises while VE/VCO2 stays flat. RC (VT2) occurs when both rise simultaneously. Check 'Wyniki.csv' for expected timestamps (AT=00:08:00, RC=00:13:40).",
+        description: "Ventilatory Equivalents (VE/VO2 and VE/VCO2) are gold-standard markers for threshold detection. AT (VT1) is marked by the first rise in VE/VO2 without a rise in VE/VCO2. RC (VT2) is where both increase, indicating a total loss of metabolic compensation.",
         config: {
           id: 6,
           traces: [
@@ -151,7 +183,7 @@ export default function Home() {
       {
         id: 7,
         title: "7. Breathing Pattern",
-        description: "Shows how the athlete achieves ventilation. VT usually rises linearly and then plateaus, after which further VE_ergo increases are achieved purely by breathing faster ('Rf' column).",
+        description: "Tidal Volume (VT) and Respiratory Frequency (Rf) describe the breathing strategy. Efficient athletes maximize VT before increasing Rf. A premature shift to rapid, shallow breathing (high Rf, low VT) can limit performance and cause respiratory muscle fatigue.",
         config: {
           id: 7,
           traces: [
@@ -175,7 +207,7 @@ export default function Home() {
       {
         id: 8,
         title: "8. Respiratory Exchange Ratio",
-        description: "Indicates fuel utilization. Peaking > 1.10 confirms a near-maximal or maximal effort.",
+        description: "The Respiratory Quotient (RQ or RER) reflects the metabolic fuel mix. RQ = 0.70 is pure fat, 1.00 is pure CHO, and values > 1.10 are typically used to confirm that a true maximal effort (VO2max) was reached.",
         config: {
           id: 8,
           traces: [
@@ -190,7 +222,7 @@ export default function Home() {
       {
         id: 9,
         title: "9. End-Tidal Gases",
-        description: "PetCO2 normally rises to the AT, then falls post-RC. PetO2 falls initially, then rises after the AT.",
+        description: "End-tidal gases (PetO2 and PetCO2) track alveolar gas exchange. A precipitous drop in PetCO2 after it peaks is a powerful marker for the Respiratory Compensation Point (RC/VT2), reflecting the drive to clear CO2 during severe acidosis.",
         config: {
           id: 9,
           traces: [
@@ -207,44 +239,39 @@ export default function Home() {
   }, [data, xAxisMode]);
 
   const supplementaryPanels = useMemo(() => {
-    if (!data) return [];
+    if (!data || !thresholds) return [];
 
     const xLabel = xAxisMode === "minutes" ? "Time (min)" : "Speed (km/h)";
 
-  // Find FatMax
-    let fatMaxVal = 0;
-    let fatMaxX = 0;
-    let fatMaxHR = 0;
+    // Find FatMax from thresholds
+    const getXFromTime = (time: number | undefined | null) => {
+      if (!time || !data) return 0;
+      if (xAxisMode === "minutes") return time;
+      const row = data.reduce((prev, curr) =>
+          Math.abs(curr.minutes - time) < Math.abs(prev.minutes - time) ? curr : prev
+      );
+      return row[xAxisMode] || 0;
+    };
+
+    const fatMaxX = getXFromTime(thresholds.fatMax);
+    const fatMaxHR = thresholds.fatMaxHr || 0;
     let fatMaxXStart = 0;
     let fatMaxXEnd = 0;
     let hasFatMaxZone = false;
-    if (data.length > 0) {
-      const maxFatRow = [...data].sort((a, b) => (b["FAT%"] || 0) - (a["FAT%"] || 0))[0];
-      fatMaxVal = maxFatRow["FAT%"] || 0;
-      fatMaxX = maxFatRow[xAxisMode] || 0;
-      fatMaxHR = maxFatRow.HR || 0;
 
-      // Calculate FatMax Zone
-      // Threshold is FAT% at Aerobic Threshold (AT/LT1)
-      const zoneThreshold = currentLT1?.["FAT%"] || 0;
-
-      if (zoneThreshold > 0) {
-        const firstIdx = data.findIndex((d) => (d["FAT%"] || 0) >= zoneThreshold);
-        const lastIdx = data.findLastIndex((d) => (d["FAT%"] || 0) >= zoneThreshold);
-
-        if (firstIdx !== -1 && lastIdx !== -1) {
-          fatMaxXStart = data[firstIdx][xAxisMode];
-          fatMaxXEnd = data[lastIdx][xAxisMode];
-          hasFatMaxZone = true;
-        }
-      }
+    if (thresholds.fatMaxZoneStartHr !== undefined && thresholds.fatMaxZoneEndHr !== undefined) {
+      const startRow = data.find(d => d.HR >= thresholds.fatMaxZoneStartHr!) || data[0];
+      const endRow = data.findLast(d => d.HR <= thresholds.fatMaxZoneEndHr!) || data[data.length - 1];
+      fatMaxXStart = startRow[xAxisMode];
+      fatMaxXEnd = endRow[xAxisMode];
+      hasFatMaxZone = true;
     }
 
     return [
       {
         id: "S1",
         title: "S1. Substrate Utilization & HR",
-        description: "Crucial for endurance nutrition. Shows the exact intensity where fat oxidation peaks (FatMax) and where carbohydrate oxidation overtakes fat (Crossover Point). Helps in planning race-day fueling.",
+        description: "Metabolic Crossover analysis determines the 'FatMax'—the intensity where fat oxidation is highest. Identifying the Crossover Point (where CHO becomes the dominant fuel) is essential for developing precise Ironman or marathon fueling strategies.",
         config: {
           id: "S1",
           traces: [
@@ -271,39 +298,18 @@ export default function Home() {
                 y0: 0,
                 y1: 1,
                 yref: "paper" as const,
-                fillcolor: "rgba(16, 185, 129, 0.25)",
+                fillcolor: "rgba(59, 130, 246, 0.15)",
                 line: { width: 0 },
                 layer: "below" as const,
               }] : []),
-              {
-                type: "line" as const,
-                x0: fatMaxX,
-                x1: fatMaxX,
-                y0: 0,
-                y1: 1,
-                yref: "paper" as const,
-                line: { color: "#10b981", width: 1.5, dash: "dot" as const },
-                layer: "above" as const,
-              }
             ],
-            annotations: [
-              {
-                x: fatMaxX,
-                y: 1.05,
-                xref: "x" as const,
-                yref: "paper" as const,
-                text: `<b>FatMax HR: ${fatMaxHR.toFixed(0)}</b>`,
-                showarrow: false,
-                font: { size: 10, color: "#065f46" },
-              }
-            ]
           },
         },
       },
       {
         id: "S1_raw",
         title: "S1b. Substrate Oxidation (Raw)",
-        description: "Raw fat and carbohydrate oxidation rates. Useful to see absolute substrate contribution across intensities.",
+        description: "Raw fat and carbohydrate oxidation rates (kcal/min) re-calculated using the Frayn equation. Provides absolute values for total energy expenditure and fuel contribution.",
         config: {
           id: "S1_raw",
           traces: [
@@ -313,13 +319,26 @@ export default function Home() {
           layout: {
             xaxis: { title: xLabel },
             yaxis: { title: "FAT, CHO (kcal/min)" },
+            shapes: [
+              ...(hasFatMaxZone ? [{
+                type: "rect" as const,
+                x0: fatMaxXStart,
+                x1: fatMaxXEnd,
+                y0: 0,
+                y1: 1,
+                yref: "paper" as const,
+                fillcolor: "rgba(59, 130, 246, 0.15)",
+                line: { width: 0 },
+                layer: "below" as const,
+              }] : []),
+            ],
           },
         },
       },
       {
         id: "S2",
         title: "S2. Running Economy & Cardiac Load",
-        description: "Evaluates how much oxygen the athlete requires to run at a given speed. A flatter slope or lower VO2 at submaximal speeds indicates a highly economical runner.",
+        description: "Running Economy (RE) measures the energy cost of running. A lower VO2 for the same speed indicates better economy. Improvements in RE allow an athlete to sustain higher speeds with lower cardiovascular and metabolic strain.",
         config: {
           id: "S2",
           traces: [
@@ -343,7 +362,7 @@ export default function Home() {
       {
         id: "S3",
         title: "S3. Total Energy Expenditure vs HR",
-        description: "Shows the exact caloric burn rate at different paces. Highly actionable for ultra-runners and Ironman triathletes to calculate total race calorie deficits.",
+        description: "Energy Expenditure (EEm) calculates the total caloric demand per minute. This data is the foundation for creating an accurate hydration and nutrition plan, preventing 'bonking' by matching intake to the athlete's specific burn rate.",
         config: {
           id: "S3",
           traces: [
@@ -367,7 +386,7 @@ export default function Home() {
       {
         id: "S4",
         title: "S4. Advanced Cardiac Output & HR",
-        description: "Rare to have in standard tests! Shows actual heart pump efficiency. Stroke Volume (SV) typically rises and plateaus at around 40-50% of VO2max. Further increases in Cardiac Output (CO) are driven solely by Heart Rate.",
+        description: "Cardiac Output (CO) and Stroke Volume (SV) reveal the heart's pumping capacity. Elite athletes often maintain a rising SV to higher intensities, whereas a premature SV plateau may indicate a need for more aerobic base training.",
         config: {
           id: "S4",
           traces: [
@@ -401,7 +420,7 @@ export default function Home() {
       {
         id: "R1",
         title: "R1. Breathing Reserve & Ventilatory Demand",
-        description: "Breathing Reserve (BR) shows the remaining capacity of the lungs. A drop below 15-20% at peak exercise suggests a primary ventilatory limitation to exercise.",
+        description: "Breathing Reserve (BR) represents the unused ventilatory capacity. Healthy individuals typically have a reserve of >15% at peak exercise. A lower reserve indicates that the lungs, rather than the heart or muscles, may be the primary factor limiting performance.",
         config: {
           id: "R1",
           traces: [
@@ -417,7 +436,7 @@ export default function Home() {
       {
         id: "R2",
         title: "R2. Ventilatory Timing (Ti/Ttot)",
-        description: "Ti/Ttot represents the duty cycle of the inspiratory muscles. Higher values indicate higher work of breathing and potential respiratory muscle fatigue.",
+        description: "Ti/Ttot (Duty Cycle) measures the fraction of the breath cycle spent inhaling. Values above 0.45-0.50 indicate high work of breathing and increase the risk of respiratory muscle fatigue and 'blood stealing' from locomotive muscles.",
         config: {
           id: "R2",
           traces: [
@@ -432,7 +451,7 @@ export default function Home() {
       {
         id: "R3",
         title: "R3. Dead Space Ventilation (VD/VT)",
-        description: "VD/VT reflects the efficiency of gas exchange. It should normally decrease during exercise. Elevated values suggest V/Q mismatch or pulmonary vascular issues.",
+        description: "VD/VT (Dead Space Ratio) reflects gas exchange efficiency. It should drop to <0.20 during exercise. A failure to decrease suggests 'wasted' ventilation, common in pulmonary vascular disease or high-intensity hyperpnea.",
         config: {
           id: "R3",
           traces: [
@@ -447,7 +466,7 @@ export default function Home() {
       {
         id: "R4",
         title: "R4. Ventilatory Drive (VT/Ti)",
-        description: "VT/Ti is a measure of the central respiratory drive. It typically increases linearly with exercise intensity.",
+        description: "VT/Ti (Mean Inspiratory Flow) is a measure of the central respiratory drive or 'hunger for air.' It tracks the intensity of the neural signal to breathe and increases linearly with both metabolic demand and perceived exertion.",
         config: {
           id: "R4",
           traces: [
@@ -465,8 +484,217 @@ export default function Home() {
   const activePanels = useMemo(() => {
     if (activeTab === "wasserman") return wassermanPanels;
     if (activeTab === "supplementary") return supplementaryPanels;
-    return respiratoryPanels;
+    if (activeTab === "respiratory") return respiratoryPanels;
+    return [];
   }, [activeTab, wassermanPanels, supplementaryPanels, respiratoryPanels]);
+
+  const ThresholdAnalysis = () => {
+    if (!data || !thresholds || !currentLT1 || !calcLT1 || !currentLT2 || !calcLT2) return null;
+
+    const formatDelta = (val: number, unit: string, precision: number = 0) => {
+      const prefix = val > 0 ? "+" : "";
+      const tolerance = unit === "min" ? TIME_DELTA_TOLERANCE_MINUTES :
+                        unit === "bpm" ? HEART_RATE_DELTA_TOLERANCE_BPM :
+                        VO2_DELTA_TOLERANCE_ML;
+      const color = Math.abs(val) < tolerance ? "text-green-600" : "text-orange-600";
+      return <span className={color}>{prefix}{val.toFixed(precision)} {unit}</span>;
+    };
+
+    const formatTimeDelta = (min1: number, min2: number) => {
+      const diffSec = (min1 - min2) * 60;
+      const prefix = diffSec > 0 ? "+" : "";
+      const absSec = Math.abs(diffSec);
+      const m = Math.floor(absSec / 60);
+      const s = Math.round(absSec % 60);
+      const color = absSec < TIME_DELTA_TOLERANCE_SECONDS ? "text-green-600" : "text-orange-600";
+      return <span className={color}>{prefix}{m}:{s.toString().padStart(2, "0")}</span>;
+    };
+
+    const atDelta = {
+      time: thresholds.at - (thresholds.calculatedAt || 0),
+      hr: (currentLT1.HR || 0) - (calcLT1.HR || 0),
+      vo2: (currentLT1.VO2 || 0) - (calcLT1.VO2 || 0),
+    };
+
+    const rcDelta = {
+      time: thresholds.rc - (thresholds.calculatedRc || 0),
+      hr: (currentLT2.HR || 0) - (calcLT2.HR || 0),
+      vo2: (currentLT2.VO2 || 0) - (calcLT2.VO2 || 0),
+    };
+
+    const maxDelta = {
+      time: thresholds.max - (thresholds.calculatedMax || thresholds.max),
+      hr: (currentMax.HR || 0) - (calcMax?.HR || currentMax.HR || 0),
+      vo2: (currentMax.VO2 || 0) - (calcMax?.VO2 || currentMax.VO2 || 0),
+    };
+
+    return (
+      <div className="space-y-6">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center space-x-2 border-b pb-4 mb-6">
+            <div className="p-2 bg-purple-50 rounded-lg">
+              <BarChart3 className="w-5 h-5 text-purple-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900">Clinical vs. Algorithmic Consensus</h2>
+              <p className="text-xs text-gray-500">Quantitative comparison of laboratory data against VeloGraph physiological models</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* AT Comparison */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-bold text-green-700 flex items-center">
+                <div className="w-2 h-2 bg-green-500 rounded-full mr-2" />
+                Aerobic Threshold (AT/VT1) Validation
+              </h3>
+              <div className="overflow-hidden border border-gray-100 rounded-lg">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
+                    <tr>
+                      <th className="px-4 py-2">Metric</th>
+                      <th className="px-4 py-2 text-right">Official</th>
+                      <th className="px-4 py-2 text-right">Calculated</th>
+                      <th className="px-4 py-2 text-right">Delta</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Time</td>
+                      <td className="px-4 py-3 text-right">{Math.floor(thresholds.at)}:{( ((thresholds.at) % 1) * 60).toFixed(0).padStart(2, "0")}</td>
+                      <td className="px-4 py-3 text-right">{Math.floor(thresholds.calculatedAt || thresholds.at)}:{( ((thresholds.calculatedAt || thresholds.at) % 1) * 60).toFixed(0).padStart(2, "0")}</td>
+                      <td className="px-4 py-3 text-right font-bold">{formatTimeDelta(thresholds.at, thresholds.calculatedAt || thresholds.at)}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Heart Rate</td>
+                      <td className="px-4 py-3 text-right">{currentLT1.HR?.toFixed(0)}</td>
+                      <td className="px-4 py-3 text-right">{(calcLT1 || currentLT1).HR?.toFixed(0)}</td>
+                      <td className="px-4 py-3 text-right font-bold">{formatDelta(atDelta.hr, "bpm")}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">VO2 (ml/min)</td>
+                      <td className="px-4 py-3 text-right">{currentLT1.VO2?.toFixed(0)}</td>
+                      <td className="px-4 py-3 text-right">{(calcLT1 || currentLT1).VO2?.toFixed(0)}</td>
+                      <td className="px-4 py-3 text-right font-bold">{formatDelta(atDelta.vo2, "ml")}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* RC Comparison */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-bold text-orange-700 flex items-center">
+                <div className="w-2 h-2 bg-orange-500 rounded-full mr-2" />
+                Respiratory Compensation (RC/VT2) Validation
+              </h3>
+              <div className="overflow-hidden border border-gray-100 rounded-lg">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
+                    <tr>
+                      <th className="px-4 py-2">Metric</th>
+                      <th className="px-4 py-2 text-right">Official</th>
+                      <th className="px-4 py-2 text-right">Calculated</th>
+                      <th className="px-4 py-2 text-right">Delta</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Time</td>
+                      <td className="px-4 py-3 text-right">{Math.floor(thresholds.rc)}:{( ((thresholds.rc) % 1) * 60).toFixed(0).padStart(2, "0")}</td>
+                      <td className="px-4 py-3 text-right">{Math.floor(thresholds.calculatedRc || thresholds.rc)}:{( ((thresholds.calculatedRc || thresholds.rc) % 1) * 60).toFixed(0).padStart(2, "0")}</td>
+                      <td className="px-4 py-3 text-right font-bold">{formatTimeDelta(thresholds.rc, thresholds.calculatedRc || thresholds.rc)}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Heart Rate</td>
+                      <td className="px-4 py-3 text-right">{currentLT2.HR?.toFixed(0)}</td>
+                      <td className="px-4 py-3 text-right">{(calcLT2 || currentLT2).HR?.toFixed(0)}</td>
+                      <td className="px-4 py-3 text-right font-bold">{formatDelta(rcDelta.hr, "bpm")}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">VO2 (ml/min)</td>
+                      <td className="px-4 py-3 text-right">{currentLT2.VO2?.toFixed(0)}</td>
+                      <td className="px-4 py-3 text-right">{(calcLT2 || currentLT2).VO2?.toFixed(0)}</td>
+                      <td className="px-4 py-3 text-right font-bold">{formatDelta(rcDelta.vo2, "ml")}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Max Effort Comparison */}
+            <div className="space-y-4 md:col-span-2">
+              <h3 className="text-sm font-bold text-red-700 flex items-center">
+                <div className="w-2 h-2 bg-red-500 rounded-full mr-2" />
+                Peak Performance (Max Effort) Validation
+              </h3>
+              <div className="overflow-hidden border border-gray-100 rounded-lg">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
+                    <tr>
+                      <th className="px-4 py-2">Metric</th>
+                      <th className="px-4 py-2 text-right">Official</th>
+                      <th className="px-4 py-2 text-right">Calculated (Peak)</th>
+                      <th className="px-4 py-2 text-right">Delta</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Time</td>
+                      <td className="px-4 py-3 text-right">{Math.floor(thresholds.max)}:{( ((thresholds.max) % 1) * 60).toFixed(0).padStart(2, "0")}</td>
+                      <td className="px-4 py-3 text-right">{Math.floor(thresholds.calculatedMax || thresholds.max)}:{( ((thresholds.calculatedMax || thresholds.max) % 1) * 60).toFixed(0).padStart(2, "0")}</td>
+                      <td className="px-4 py-3 text-right font-bold">{formatTimeDelta(thresholds.max, thresholds.calculatedMax || thresholds.max)}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">Heart Rate</td>
+                      <td className="px-4 py-3 text-right">{currentMax.HR?.toFixed(0)}</td>
+                      <td className="px-4 py-3 text-right">{(calcMax || currentMax).HR?.toFixed(0)}</td>
+                      <td className="px-4 py-3 text-right font-bold">{formatDelta(maxDelta.hr, "bpm")}</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">VO2 (ml/min)</td>
+                      <td className="px-4 py-3 text-right">{currentMax.VO2?.toFixed(0)}</td>
+                      <td className="px-4 py-3 text-right">{(calcMax || currentMax).VO2?.toFixed(0)}</td>
+                      <td className="px-4 py-3 text-right font-bold">{formatDelta(maxDelta.vo2, "ml")}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <h4 className="text-xs font-bold text-gray-700 uppercase mb-2 flex items-center">
+              <Info className="w-3 h-3 mr-1 text-blue-500" />
+              Physiological Interpretation & Technical Insights
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-gray-600 leading-relaxed">
+              <div>
+                <p className="font-bold text-green-700 mb-1">AT Analysis:</p>
+                {Math.abs(atDelta.time * 60) < 30 ? (
+                  "The VeloGraph algorithm (using the V-Slope and VE/VO2 nadir consensus) aligns perfectly with the lab's manual assessment. This indicates a high-confidence Aerobic Threshold, representing the point where the athlete begins to utilize anaerobic buffering to manage rising blood lactate."
+                ) : atDelta.time > 0 ? (
+                  "The lab identifies AT later than the algorithmic consensus. This often happens if the physician prioritized the VO2/VCO2 crossover point over the earliest inflection in ventilatory equivalents. The algorithm might be detecting a subtle earlier metabolic shift."
+                ) : (
+                  "The algorithm identifies AT later than the lab. This suggests the athlete may have had an early, non-metabolic rise in ventilation (e.g., due to anxiety or hyperpnea) that the algorithm filtered out but the lab technician included in their manual review."
+                )}
+              </div>
+              <div>
+                <p className="font-bold text-orange-700 mb-1">RC Analysis:</p>
+                {Math.abs(rcDelta.time * 60) < 30 ? (
+                  "Excellent consensus on the Respiratory Compensation Point. Both the algorithmic PetCO2 peak-drop method and the lab's assessment agree on the exact moment the athlete entered severe metabolic acidosis and lost respiratory compensation."
+                ) : rcDelta.time > 0 ? (
+                  "The lab identifies RC later than the algorithm. Algorithmic detection triggers immediately at the peak of PetCO2, whereas clinical practice sometimes waits for a more pronounced 'secondary' rise in VE/VCO2 to confirm the state of hyperpnea."
+                ) : (
+                  "The algorithm triggers RC later than the lab. This discrepancy can occur if the athlete has exceptional CO2 buffering capacity, leading to a prolonged plateau in end-tidal CO2 before the eventual precipitous drop."
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const ThresholdMethodology = () => (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-4">
@@ -492,7 +720,7 @@ export default function Home() {
             <div className="grid grid-cols-2 gap-3 p-3 bg-green-50 rounded-lg border border-green-100 text-[11px] font-medium text-green-800">
               <div className="flex items-center space-x-2">
                 <Clock className="w-3 h-3 text-green-600" />
-                <span><b>Time:</b> {Math.floor(thresholds?.at || 0)}:{( ((thresholds?.at || 0) % 1) * 60).toFixed(0).padStart(2, "0")}</span>
+                <span><b>Time:</b> {Math.floor(thresholds?.at || 0)}:{( ((thresholds?.at || 0) % 1) * 60).toFixed(0).padStart(2, "0")} (Calc: {Math.floor(thresholds?.calculatedAt || 0)}:{(((thresholds?.calculatedAt || 0) % 1) * 60).toFixed(0).padStart(2, "0")})</span>
               </div>
               <div className="flex items-center space-x-2">
                 <Gauge className="w-3 h-3 text-green-600" />
@@ -505,6 +733,14 @@ export default function Home() {
               <div className="flex items-center space-x-2">
                 <div className="w-3 h-3 border-2 border-blue-600 rounded-full" />
                 <span><b>VO2:</b> {currentLT1.VO2?.toFixed(0)} ml/min</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 border-2 border-black rounded-full" />
+                <span><b>RER:</b> {currentLT1.RQ?.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 border-2 border-green-800 rounded-full" />
+                <span><b>VE:</b> {currentLT1.VE_ergo?.toFixed(0)} L/min</span>
               </div>
             </div>
           )}
@@ -529,7 +765,7 @@ export default function Home() {
             <div className="grid grid-cols-2 gap-3 p-3 bg-orange-50 rounded-lg border border-orange-100 text-[11px] font-medium text-orange-800">
               <div className="flex items-center space-x-2">
                 <Clock className="w-3 h-3 text-orange-600" />
-                <span><b>Time:</b> {Math.floor(thresholds?.rc || 0)}:{( ((thresholds?.rc || 0) % 1) * 60).toFixed(0).padStart(2, "0")}</span>
+                <span><b>Time:</b> {Math.floor(thresholds?.rc || 0)}:{( ((thresholds?.rc || 0) % 1) * 60).toFixed(0).padStart(2, "0")} (Calc: {Math.floor(thresholds?.calculatedRc || 0)}:{(((thresholds?.calculatedRc || 0) % 1) * 60).toFixed(0).padStart(2, "0")})</span>
               </div>
               <div className="flex items-center space-x-2">
                 <Gauge className="w-3 h-3 text-orange-600" />
@@ -542,6 +778,14 @@ export default function Home() {
               <div className="flex items-center space-x-2">
                 <div className="w-3 h-3 border-2 border-blue-600 rounded-full" />
                 <span><b>VO2:</b> {currentLT2.VO2?.toFixed(0)} ml/min</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 border-2 border-black rounded-full" />
+                <span><b>RER:</b> {currentLT2.RQ?.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 border-2 border-orange-800 rounded-full" />
+                <span><b>VE:</b> {currentLT2.VE_ergo?.toFixed(0)} L/min</span>
               </div>
             </div>
           )}
@@ -566,7 +810,11 @@ export default function Home() {
             <div className="grid grid-cols-2 gap-3 p-3 bg-red-50 rounded-lg border border-red-100 text-[11px] font-medium text-red-800">
               <div className="flex items-center space-x-2">
                 <Clock className="w-3 h-3 text-red-600" />
-                <span><b>Time:</b> {Math.floor(thresholds?.max || 0)}:{( ((thresholds?.max || 0) % 1) * 60).toFixed(0).padStart(2, "0")}</span>
+                <span><b>Time:</b> {Math.floor(thresholds?.max || 0)}:{( ((thresholds?.max || 0) % 1) * 60).toFixed(0).padStart(2, "0")}
+                {thresholds?.calculatedMax && thresholds.calculatedMax !== thresholds.max && (
+                  <span className="ml-1 text-[9px] text-red-400 font-normal italic">(Peak: {Math.floor(thresholds.calculatedMax)}:{( (thresholds.calculatedMax % 1) * 60).toFixed(0).padStart(2, "0")})</span>
+                )}
+                </span>
               </div>
               <div className="flex items-center space-x-2">
                 <Gauge className="w-3 h-3 text-red-600" />
@@ -611,7 +859,7 @@ export default function Home() {
             <div className="bg-blue-600 p-2 rounded-lg">
               <Gauge className="w-6 h-6 text-white" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight">Triathlon Lab Visualizer</h1>
+            <h1 className="text-xl font-bold tracking-tight">VeloGraph CPET Analytics</h1>
           </div>
           {data && (
             <div className="flex items-center space-x-4">
@@ -623,7 +871,7 @@ export default function Home() {
                   }`}
                 >
                   <LayoutGrid className="w-3.5 h-3.5 mr-1.5" />
-                  Wasserman
+                  Wasserman 9-Panel
                 </button>
                 <button
                   onClick={() => setActiveTab("supplementary")}
@@ -632,7 +880,7 @@ export default function Home() {
                   }`}
                 >
                   <BarChart3 className="w-3.5 h-3.5 mr-1.5" />
-                  Supplementary
+                  Metabolic & Cardiac
                 </button>
                 <button
                   onClick={() => setActiveTab("respiratory")}
@@ -641,7 +889,16 @@ export default function Home() {
                   }`}
                 >
                   <Clock className="w-3.5 h-3.5 mr-1.5" />
-                  Respiratory
+                  Ventilatory Mechanics
+                </button>
+                <button
+                  onClick={() => setActiveTab("analysis")}
+                  className={`flex items-center px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    activeTab === "analysis" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <BarChart3 className="w-3.5 h-3.5 mr-1.5" />
+                  Threshold Validation
                 </button>
               </div>
 
@@ -682,20 +939,24 @@ export default function Home() {
 
         {data && (
           <div className="space-y-8">
-            <ThresholdMethodology />
+            {activeTab !== "analysis" && <ThresholdMethodology />}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {activePanels.map((panel) => (
-                <WassermanChart
-                  key={panel.id}
-                  data={data}
-                  title={panel.title}
-                  description={panel.description}
-                  config={panel.config}
-                  thresholds={thresholds || undefined}
-                />
-              ))}
-            </div>
+            {activeTab === "analysis" ? (
+              <ThresholdAnalysis />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {activePanels.map((panel) => (
+                  <WassermanChart
+                    key={panel.id}
+                    data={data}
+                    title={panel.title}
+                    description={panel.description}
+                    config={panel.config}
+                    thresholds={thresholds || undefined}
+                  />
+                ))}
+              </div>
+            )}
 
             <div className="flex justify-center pt-4">
               <button
@@ -711,10 +972,11 @@ export default function Home() {
 
       <footer className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 border-t border-gray-200 mt-8">
         <p className="text-center text-xs text-gray-400">
-          CPET Visualization: {
+          CPET Analytics: {
             activeTab === "wasserman" ? "Standard 9-Panel Wasserman Layout" :
-            activeTab === "supplementary" ? "Supplementary Physiological Charts" :
-            "Advanced Respiratory Analysis"
+            activeTab === "supplementary" ? "Metabolic & Cardiac Substrate Analysis" :
+            activeTab === "respiratory" ? "Ventilatory Mechanics & Efficiency" :
+            "Comparative Threshold Validation"
           }
         </p>
       </footer>

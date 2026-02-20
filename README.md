@@ -20,6 +20,17 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Testing & Validation
+
+This project includes a validation suite to ensure physiological thresholds (AT/RC) are calculated accurately against real laboratory data.
+
+To run the tests:
+```bash
+npm test
+```
+
+The tests use `vitest` to process `data/Oleksandr_Hiliazov__Run__2025.xlsx` and compare calculated vs. official thresholds.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
