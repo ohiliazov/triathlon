@@ -47,8 +47,9 @@ export default function Home() {
   }, [data, thresholds]);
 
   const calcLT1 = useMemo(() => {
-    if (!data || !thresholds?.calculatedAt) return null;
-    return data.find((d) => d.minutes >= thresholds.calculatedAt) || data[0];
+    const t = thresholds?.calculatedAt;
+    if (!data || t === undefined) return null;
+    return data.find((d) => d.minutes >= t) || data[0];
   }, [data, thresholds]);
 
   const currentLT2 = useMemo(() => {
@@ -57,8 +58,9 @@ export default function Home() {
   }, [data, thresholds]);
 
   const calcLT2 = useMemo(() => {
-    if (!data || !thresholds?.calculatedRc) return null;
-    return data.find((d) => d.minutes >= thresholds.calculatedRc) || data[data.length - 1];
+    const rc = thresholds?.calculatedRc;
+    if (!data || rc === undefined) return null;
+    return data.find((d) => d.minutes >= rc) || data[data.length - 1];
   }, [data, thresholds]);
 
   const currentMax = useMemo(() => {
@@ -67,8 +69,9 @@ export default function Home() {
   }, [data, thresholds]);
 
   const calcMax = useMemo(() => {
-    if (!data || !thresholds?.calculatedMax) return null;
-    return data.find((d) => d.minutes >= thresholds.calculatedMax) || data[data.length - 1];
+    const mx = thresholds?.calculatedMax;
+    if (!data || mx === undefined) return null;
+    return data.find((d) => d.minutes >= mx) || data[data.length - 1];
   }, [data, thresholds]);
 
   const wassermanPanels = useMemo(() => {

@@ -191,7 +191,7 @@ export default function ActivitiesPage() {
                             autosize: true,
                             margin: { t: 40, b: 40, l: 50, r: 20 },
                             xaxis: { showgrid: true, gridcolor: "#f3f4f6", tickformat: "%H:%M:%S" },
-                            yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: "bpm" },
+                            yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: { text: "bpm" } },
                           }}
                           config={{ responsive: true, displayModeBar: false }}
                           className="w-full h-[300px]"
@@ -209,7 +209,7 @@ export default function ActivitiesPage() {
                           yaxis: {
                             showgrid: true,
                             gridcolor: "#f3f4f6",
-                            title: "min/km",
+                            title: { text: "min/km" },
                             autorange: "reversed",
                             // Use tickvals and ticktext to show MM:SS on the Y axis
                             tickmode: "array",
@@ -231,7 +231,7 @@ export default function ActivitiesPage() {
                             autosize: true,
                             margin: { t: 40, b: 40, l: 50, r: 20 },
                             xaxis: { showgrid: true, gridcolor: "#f3f4f6", tickformat: "%H:%M:%S" },
-                            yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: "m" },
+                            yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: { text: "m" } },
                           }}
                           config={{ responsive: true, displayModeBar: false }}
                           className="w-full h-[250px]"
@@ -245,7 +245,7 @@ export default function ActivitiesPage() {
                             autosize: true,
                             margin: { t: 40, b: 40, l: 50, r: 20 },
                             xaxis: { showgrid: true, gridcolor: "#f3f4f6", tickformat: "%H:%M:%S" },
-                            yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: "rpm" },
+                            yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: { text: "rpm" } },
                           }}
                           config={{ responsive: true, displayModeBar: false }}
                           className="w-full h-[250px]"

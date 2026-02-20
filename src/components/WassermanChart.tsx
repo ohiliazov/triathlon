@@ -336,6 +336,16 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
     const shapes: any[] = [];
     const annotations: any[] = [];
 
+    // Normalize axis titles coming from external config to Plotly's expected object form
+    const rawLayout = (config as any).layout || {};
+    const normalizedConfigLayout: any = { ...rawLayout };
+    if (normalizedConfigLayout.xaxis && typeof normalizedConfigLayout.xaxis.title === "string") {
+      normalizedConfigLayout.xaxis = { ...normalizedConfigLayout.xaxis, title: { text: normalizedConfigLayout.xaxis.title } };
+    }
+    if (normalizedConfigLayout.yaxis && typeof normalizedConfigLayout.yaxis.title === "string") {
+      normalizedConfigLayout.yaxis = { ...normalizedConfigLayout.yaxis, title: { text: normalizedConfigLayout.yaxis.title } };
+    }
+
     const xKey = config.traces[0]?.xKey || "minutes";
     const isTimeBased = ["minutes", "t"].includes(xKey);
 
@@ -420,9 +430,9 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
         linecolor: "#d1d5db",
         zeroline: false,
         ticks: "outside" as const,
-        tickfont: {size: AXIS_TICK_FONT_SIZE},
-        title: {font: {size: AXIS_TITLE_FONT_SIZE, color: "#374151"}},
-        ...(config.layout?.xaxis || {}),
+        tickfont: { size: AXIS_TICK_FONT_SIZE },
+        title: { font: { size: AXIS_TITLE_FONT_SIZE, color: "#374151" } },
+        ...(normalizedConfigLayout?.xaxis || {}),
       },
       yaxis: {
         automargin: true,
@@ -431,22 +441,22 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
         linecolor: "#d1d5db",
         zeroline: false,
         ticks: "outside" as const,
-        tickfont: {size: AXIS_TICK_FONT_SIZE},
+        tickfont: { size: AXIS_TICK_FONT_SIZE },
         tickformat: ".2f",
-        title: {font: {size: AXIS_TITLE_FONT_SIZE, color: "#374151"}},
-        ...(config.layout?.yaxis || {}),
+        title: { font: { size: AXIS_TITLE_FONT_SIZE, color: "#374151" } },
+        ...(normalizedConfigLayout?.yaxis || {}),
       },
     };
 
     // Special handling for dual axes and custom shapes/annotations
-    const additionalLayout = Object.fromEntries(
-        Object.entries(config.layout || {}).filter(
+    const additionalLayout: Record<string, any> = Object.fromEntries(
+        Object.entries(normalizedConfigLayout || {}).filter(
             ([key]) => !["xaxis", "yaxis", "shapes", "annotations"].includes(key)
         )
     );
 
     // Transform external shapes/annotations to ISO dates if necessary
-    const externalShapes = (config.layout?.shapes || []).map((s: any) => {
+    const externalShapes = (normalizedConfigLayout?.shapes || []).map((s: any) => {
       if (!isTimeBased) return s;
       const newS = {...s};
       if (typeof s.x0 === "number") newS.x0 = new Date(s.x0 * SECONDS_PER_MINUTE * MS_PER_SECOND).toISOString();
@@ -454,25 +464,46 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
       return newS;
     });
 
-    const externalAnnotations = (config.layout?.annotations || []).map((a: any) => {
+    const externalAnnotations = (normalizedConfigLayout?.annotations || []).map((a: any) => {
       if (!isTimeBased) return a;
       const newA = {...a};
       if (typeof a.x === "number") newA.x = new Date(a.x * SECONDS_PER_MINUTE * MS_PER_SECOND).toISOString();
       return newA;
     });
 
-    // Apply dual axis cleanup
+    // Apply dual/multi-axis cleanup and normalize title strings to objects
     Object.keys(additionalLayout).forEach((key) => {
-      if (key.startsWith("yaxis") && key !== "yaxis") {
-        additionalLayout[key] = {
+      if (key.startsWith("yaxis")) {
+        const prev: any = additionalLayout[key];
+        const merged: any = {
           automargin: true,
-          showgrid: false,
+          showgrid: key === "yaxis" ? true : false,
           zeroline: false,
           ticks: "outside" as const,
-          tickfont: {size: AXIS_TICK_FONT_SIZE},
+          tickfont: { size: AXIS_TICK_FONT_SIZE },
           tickformat: ".2f",
-          ...(typeof additionalLayout[key] === "object" ? (additionalLayout[key] as object) : {}),
+          ...(typeof prev === "object" ? prev : {}),
         };
+        if (merged && typeof merged.title === "string") {
+          merged.title = { text: merged.title };
+        }
+        additionalLayout[key] = merged;
+      } else if (key.startsWith("xaxis")) {
+        const prev: any = additionalLayout[key];
+        const merged: any = {
+          automargin: true,
+          showgrid: true,
+          gridcolor: "#f3f4f6",
+          linecolor: "#d1d5db",
+          zeroline: false,
+          ticks: "outside" as const,
+          tickfont: { size: AXIS_TICK_FONT_SIZE },
+          ...(typeof prev === "object" ? prev : {}),
+        };
+        if (merged && typeof merged.title === "string") {
+          merged.title = { text: merged.title };
+        }
+        additionalLayout[key] = merged;
       }
     });
 
