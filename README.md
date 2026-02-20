@@ -29,7 +29,7 @@ To run the tests:
 npm test
 ```
 
-The tests use `vitest` to process `data/Oleksandr_Hiliazov__Run__2025.xlsx` and compare calculated vs. official thresholds.
+The tests use `vitest` to process laboratory data and compare calculated vs. official thresholds.
 
 ## Learn More
 
