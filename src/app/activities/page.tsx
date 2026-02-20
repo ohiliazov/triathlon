@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
-import { Gauge, Activity } from "lucide-react";
+import { Gauge, Activity, Clock } from "lucide-react";
 import { ProcessedActivity } from "@/lib/fitProcessor";
 import FitFileUploader from "@/components/FitFileUploader";
 
@@ -14,69 +14,6 @@ const Plot = dynamic(() => import("react-plotly.js"), {
     </div>
   ),
 });
-
-export default function ActivitiesPage() {
-  const [activity, setActivity] = useState<ProcessedActivity | null>(null);
-
-  const handleActivityLoaded = (data: ProcessedActivity) => {
-    setActivity(data);
-  };
-
-  const chartData = useMemo(() => {
-    if (!activity || !activity.records || !activity.records.length) return null;
-
-    const timestamps = activity.records.map((r) => r.timestamp);
-
-    return {
-      heartRate: {
-        x: timestamps,
-        y: activity.records.map((r) => r.heart_rate),
-        name: "Heart Rate",
-        type: "scatter" as const,
-        mode: "lines" as const,
-        line: { color: "#dc2626", width: 2 },
-      },
-      speed: {
-        x: timestamps,
-        y: activity.records.map((r) => (r.speed ? r.speed * 3.6 : null)),
-        name: "Speed (km/h)",
-        type: "scatter" as const,
-        mode: "lines" as const,
-        line: { color: "#2563eb", width: 2 },
-      },
-      pace: {
-        x: timestamps,
-        y: activity.records.map((r) => {
-          if (!r.speed || r.speed < 0.2) return null;
-          const decimalMinutes = 1000 / (r.speed * 60);
-          if (decimalMinutes > 60) return null; // Cap chart at 60 min/km to avoid extreme outliers
-          return decimalMinutes;
-        }),
-        name: "Pace (min/km)",
-        type: "scatter" as const,
-        mode: "lines" as const,
-        line: { color: "#8b5cf6", width: 2 },
-      },
-      altitude: {
-        x: timestamps,
-        y: activity.records.map((r) => r.altitude),
-        name: "Altitude",
-        type: "scatter" as const,
-        mode: "lines" as const,
-        fill: "tozeroy" as const,
-        line: { color: "#6b7280", width: 1 },
-        fillcolor: "rgba(107, 114, 128, 0.2)",
-      },
-      cadence: {
-        x: timestamps,
-        y: activity.records.map((r) => r.cadence),
-        name: "Cadence",
-        type: "scatter" as const,
-        mode: "lines" as const,
-        line: { color: "#10b981", width: 2 },
-      },
-    };
-  }, [activity]);
 
   const formatDuration = (seconds: number | null) => {
     if (seconds === null || isNaN(seconds)) return "--:--";
@@ -103,6 +40,156 @@ export default function ActivitiesPage() {
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
+/**
+ * Calculates a time-based moving average for FIT records.
+ */
+function calculateMovingAverage(
+  records: any[],
+  yKey: string,
+  windowSeconds: number,
+  yTransform?: (val: number) => number | null
+): (number | null)[] {
+  if (windowSeconds <= 1) {
+    return records.map((r) => {
+      const val = r[yKey];
+      if (val === undefined || val === null) return null;
+      return yTransform ? yTransform(val) : val;
+    });
+  }
+
+  const result: (number | null)[] = [];
+  const halfWindowMs = (windowSeconds / 2) * 1000;
+
+  let leftIdx = 0;
+  let rightIdx = 0;
+  let runningSum = 0;
+  let count = 0;
+
+  // Pre-calculate timestamps in ms for faster comparison
+  const times = records.map((r) => new Date(r.timestamp).getTime());
+
+  for (let i = 0; i < records.length; i++) {
+    const curTime = times[i];
+    const startTime = curTime - halfWindowMs;
+    const endTime = curTime + halfWindowMs;
+
+    // Expand right
+    while (rightIdx < records.length && times[rightIdx] <= endTime) {
+      const val = records[rightIdx][yKey];
+      if (val !== null && val !== undefined && !isNaN(val)) {
+        runningSum += val;
+        count++;
+      }
+      rightIdx++;
+    }
+
+    // Shrink left
+    while (leftIdx < rightIdx && times[leftIdx] < startTime) {
+      const val = records[leftIdx][yKey];
+      if (val !== null && val !== undefined && !isNaN(val)) {
+        runningSum -= val;
+        count--;
+      }
+      leftIdx++;
+    }
+
+    if (count > 0) {
+      const avg = runningSum / count;
+      result.push(yTransform ? yTransform(avg) : avg);
+    } else {
+      result.push(null);
+    }
+  }
+
+  return result;
+}
+
+export default function ActivitiesPage() {
+  const [activity, setActivity] = useState<ProcessedActivity | null>(null);
+  const [smoothingWindow, setSmoothingWindow] = useState<number>(0);
+
+  const handleActivityLoaded = (data: ProcessedActivity) => {
+    setActivity(data);
+  };
+
+  const chartData = useMemo(() => {
+    if (!activity || !activity.records || !activity.records.length) return null;
+
+    const timestamps = activity.records.map((r) => r.timestamp);
+
+    // Heart Rate
+    const hrData = calculateMovingAverage(activity.records, "heart_rate", smoothingWindow);
+
+    // Speed (m/s -> km/h)
+    const speedData = calculateMovingAverage(activity.records, "speed", smoothingWindow, (v) => v * 3.6);
+
+    // Pace (m/s -> min/km)
+    const paceData = calculateMovingAverage(activity.records, "speed", smoothingWindow, (v) => {
+      if (!v || v < 0.2) return null;
+      const dec = 1000 / (v * 60);
+      return dec > 60 ? null : dec;
+    });
+
+    // Altitude
+    const altitudeData = calculateMovingAverage(activity.records, "altitude", smoothingWindow);
+
+    // Cadence
+    const cadenceData = calculateMovingAverage(activity.records, "cadence", smoothingWindow);
+
+    return {
+      heartRate: {
+        x: timestamps,
+        y: hrData,
+        name: smoothingWindow > 0 ? `HR (${smoothingWindow}s avg)` : "Heart Rate",
+        type: "scatter" as const,
+        mode: "lines" as const,
+        line: { color: "#dc2626", width: 2 },
+        hovertemplate: "%{y:.0f} bpm<extra></extra>",
+      },
+      speed: {
+        x: timestamps,
+        y: speedData,
+        name: smoothingWindow > 0 ? `Speed (${smoothingWindow}s avg)` : "Speed",
+        type: "scatter" as const,
+        mode: "lines" as const,
+        line: { color: "#2563eb", width: 2 },
+        hovertemplate: "%{y:.1f} km/h<extra></extra>",
+      },
+      pace: {
+        x: timestamps,
+        y: paceData,
+        name: smoothingWindow > 0 ? `Pace (${smoothingWindow}s avg)` : "Pace",
+        type: "scatter" as const,
+        mode: "lines" as const,
+        line: { color: "#8b5cf6", width: 2 },
+        // Hover formatting for pace (MM:SS)
+        text: paceData.map((p) => (p ? formatPace(p) : "")),
+        hovertemplate: "%{text}/km<extra></extra>",
+      },
+      altitude: {
+        x: timestamps,
+        y: altitudeData,
+        name: smoothingWindow > 0 ? `Altitude (${smoothingWindow}s avg)` : "Altitude",
+        type: "scatter" as const,
+        mode: "lines" as const,
+        fill: "tozeroy" as const,
+        line: { color: "#6b7280", width: 1 },
+        fillcolor: "rgba(107, 114, 128, 0.2)",
+        hovertemplate: "%{y:.1f} m<extra></extra>",
+      },
+      cadence: {
+        x: timestamps,
+        y: cadenceData,
+        name: smoothingWindow > 0 ? `Cadence (${smoothingWindow}s avg)` : "Cadence",
+        type: "scatter" as const,
+        mode: "lines" as const,
+        line: { color: "#10b981", width: 2 },
+        hovertemplate: "%{y:.0f} rpm<extra></extra>",
+      },
+    };
+  }, [activity, smoothingWindow]);
+
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
       <header className="border-b bg-white sticky top-0 z-10 shadow-sm">
@@ -120,6 +207,27 @@ export default function ActivitiesPage() {
               </Link>
             </nav>
           </div>
+
+          {activity && (
+            <div className="flex items-center space-x-4">
+               <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200">
+                <div className="flex items-center px-2 mr-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                   Smoothing:
+                </div>
+                {[0, 3, 5, 10, 30, 60].map((w) => (
+                  <button
+                    key={w}
+                    onClick={() => setSmoothingWindow(w)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                      smoothingWindow === w ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    {w === 0 ? "Instant" : `${w}s`}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
@@ -192,6 +300,7 @@ export default function ActivitiesPage() {
                             margin: { t: 40, b: 40, l: 50, r: 20 },
                             xaxis: { showgrid: true, gridcolor: "#f3f4f6", tickformat: "%H:%M:%S" },
                             yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: { text: "bpm" } },
+                            hovermode: "x unified",
                           }}
                           config={{ responsive: true, displayModeBar: false }}
                           className="w-full h-[300px]"
@@ -216,6 +325,7 @@ export default function ActivitiesPage() {
                             tickvals: [4, 5, 6, 7, 8, 9, 10, 12, 15, 20],
                             ticktext: ["4:00", "5:00", "6:00", "7:00", "8:00", "9:00", "10:00", "12:00", "15:00", "20:00"],
                           },
+                          hovermode: "x unified",
                         }}
                         config={{ responsive: true, displayModeBar: false }}
                         className="w-full h-[300px]"
@@ -232,6 +342,7 @@ export default function ActivitiesPage() {
                             margin: { t: 40, b: 40, l: 50, r: 20 },
                             xaxis: { showgrid: true, gridcolor: "#f3f4f6", tickformat: "%H:%M:%S" },
                             yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: { text: "m" } },
+                            hovermode: "x unified",
                           }}
                           config={{ responsive: true, displayModeBar: false }}
                           className="w-full h-[250px]"
@@ -246,6 +357,7 @@ export default function ActivitiesPage() {
                             margin: { t: 40, b: 40, l: 50, r: 20 },
                             xaxis: { showgrid: true, gridcolor: "#f3f4f6", tickformat: "%H:%M:%S" },
                             yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: { text: "rpm" } },
+                            hovermode: "x unified",
                           }}
                           config={{ responsive: true, displayModeBar: false }}
                           className="w-full h-[250px]"
