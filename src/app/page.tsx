@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import FileUploader from "@/components/FileUploader";
 import {WassermanChart} from "@/components/WassermanChart";
-import { Clock, Gauge, BarChart3, LayoutGrid, Info } from "lucide-react";
+import { Clock, Gauge, BarChart3, LayoutGrid, Info, Activity } from "lucide-react";
 
 // --- Validation Thresholds ---
 const TIME_DELTA_TOLERANCE_MINUTES = 0.5;
@@ -13,6 +13,7 @@ const TIME_DELTA_TOLERANCE_SECONDS = 30;
 
 export default function Home() {
   const [data, setData] = useState<any[] | null>(null);
+  const [steadyData, setSteadyData] = useState<any[] | null>(null);
   const [thresholds, setThresholds] = useState<{
     at: number;
     rc: number;
@@ -26,12 +27,18 @@ export default function Home() {
     fatMaxZoneEndHr?: number | null;
   } | null>(null);
   const [xAxisMode, setXAxisMode] = useState<"minutes" | "Speed">("minutes");
+  const [isSteadyMode, setIsSteadyMode] = useState(false);
   const [activeTab, setActiveTab] = useState<"wasserman" | "supplementary" | "respiratory" | "analysis">("wasserman");
 
   const handleDataLoaded = (payload: any) => {
     setData(payload.data);
+    setSteadyData(payload.steadyStateData);
     setThresholds(payload.thresholds);
   };
+
+  const displayData = useMemo(() => {
+    return isSteadyMode && steadyData ? steadyData : data;
+  }, [isSteadyMode, steadyData, data]);
 
   const currentLT1 = useMemo(() => {
     if (!data || !thresholds) return null;
@@ -621,46 +628,6 @@ export default function Home() {
                 </table>
               </div>
             </div>
-
-            {/* Max Effort Comparison */}
-            <div className="space-y-4 md:col-span-2">
-              <h3 className="text-sm font-bold text-red-700 flex items-center">
-                <div className="w-2 h-2 bg-red-500 rounded-full mr-2" />
-                Peak Performance (Max Effort) Validation
-              </h3>
-              <div className="overflow-hidden border border-gray-100 rounded-lg">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
-                    <tr>
-                      <th className="px-4 py-2">Metric</th>
-                      <th className="px-4 py-2 text-right">Official</th>
-                      <th className="px-4 py-2 text-right">Calculated (Peak)</th>
-                      <th className="px-4 py-2 text-right">Delta</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    <tr>
-                      <td className="px-4 py-3 font-medium">Time</td>
-                      <td className="px-4 py-3 text-right">{Math.floor(thresholds.max)}:{( ((thresholds.max) % 1) * 60).toFixed(0).padStart(2, "0")}</td>
-                      <td className="px-4 py-3 text-right">{Math.floor(thresholds.calculatedMax || thresholds.max)}:{( ((thresholds.calculatedMax || thresholds.max) % 1) * 60).toFixed(0).padStart(2, "0")}</td>
-                      <td className="px-4 py-3 text-right font-bold">{formatTimeDelta(thresholds.max, thresholds.calculatedMax || thresholds.max)}</td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-3 font-medium">Heart Rate</td>
-                      <td className="px-4 py-3 text-right">{currentMax.HR?.toFixed(0)}</td>
-                      <td className="px-4 py-3 text-right">{(calcMax || currentMax).HR?.toFixed(0)}</td>
-                      <td className="px-4 py-3 text-right font-bold">{formatDelta(maxDelta.hr, "bpm")}</td>
-                    </tr>
-                    <tr>
-                      <td className="px-4 py-3 font-medium">VO2 (ml/min)</td>
-                      <td className="px-4 py-3 text-right">{currentMax.VO2?.toFixed(0)}</td>
-                      <td className="px-4 py-3 text-right">{(calcMax || currentMax).VO2?.toFixed(0)}</td>
-                      <td className="px-4 py-3 text-right font-bold">{formatDelta(maxDelta.vo2, "ml")}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
           </div>
 
           <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
@@ -922,6 +889,27 @@ export default function Home() {
                   Speed
                 </button>
               </div>
+
+              <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200">
+                <button
+                  onClick={() => setIsSteadyMode(false)}
+                  className={`flex items-center px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    !isSteadyMode ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <LayoutGrid className="w-3.5 h-3.5 mr-1.5" />
+                  Full Test
+                </button>
+                <button
+                  onClick={() => setIsSteadyMode(true)}
+                  className={`flex items-center px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                    isSteadyMode ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  <Activity className="w-3.5 h-3.5 mr-1.5" />
+                  Stable State
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -948,10 +936,11 @@ export default function Home() {
                 {activePanels.map((panel) => (
                   <WassermanChart
                     key={panel.id}
-                    data={data}
+                    data={displayData || []}
                     title={panel.title}
                     description={panel.description}
                     config={panel.config}
+                    isSteadyMode={isSteadyMode}
                     thresholds={thresholds || undefined}
                   />
                 ))}
