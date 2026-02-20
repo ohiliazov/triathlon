@@ -1,0 +1,100 @@
+export enum MesgNum {
+  FILE_ID = 0,
+  CAPABILITIES = 1,
+  DEVICE_SETTINGS = 2,
+  USER_PROFILE = 3,
+  HRM_PROFILE = 4,
+  SDM_PROFILE = 5,
+  BIKE_PROFILE = 6,
+  ZONES_TARGET = 7,
+  HR_ZONE = 8,
+  POWER_ZONE = 9,
+  MET_ZONE = 10,
+  SPORT = 12,
+  GOAL = 15,
+  SESSION = 18,
+  LAP = 19,
+  RECORD = 20,
+  EVENT = 21,
+  DEVICE_INFO = 23,
+  WORKOUT = 26,
+  WORKOUT_STEP = 27,
+  SCHEDULE = 28,
+  WEIGHT_SCALE = 30,
+  COURSE = 31,
+  COURSE_POINT = 32,
+  TOTALS = 33,
+  ACTIVITY = 34,
+  SOFTWARE = 35,
+  FILE_CAPABILITIES = 37,
+  MESG_CAPABILITIES = 38,
+  FIELD_CAPABILITIES = 39,
+  FILE_CREATOR = 49,
+  BLOOD_PRESSURE = 51,
+  SPLIT = 226,
+  SPLIT_SUMMARY = 227,
+}
+
+export interface ProfileField {
+  name: string;
+  scale?: number;
+  offset?: number;
+  units?: string;
+}
+
+export const PROFILE: Record<number, Record<number, ProfileField>> = {
+  [MesgNum.RECORD]: {
+    253: { name: "timestamp", units: "s" },
+    0: { name: "position_lat", units: "semicircles" },
+    1: { name: "position_long", units: "semicircles" },
+    2: { name: "altitude", scale: 5, offset: 500, units: "m" },
+    3: { name: "heart_rate", units: "bpm" },
+    4: { name: "cadence", units: "rpm" },
+    5: { name: "distance", scale: 100, units: "m" },
+    6: { name: "speed", scale: 1000, units: "m/s" },
+    7: { name: "power", units: "watts" },
+    13: { name: "temperature", units: "C" },
+    // Enhanced fields present in modern FIT files (per FIT Profile)
+    78: { name: "enhanced_altitude", scale: 5, offset: 500, units: "m" },
+    73: { name: "enhanced_speed", scale: 1000, units: "m/s" },
+  },
+  [MesgNum.LAP]: {
+    253: { name: "timestamp" },
+    0: { name: "event" },
+    1: { name: "event_type" },
+    2: { name: "start_time" },
+    7: { name: "total_elapsed_time", scale: 1000, units: "s" },
+    8: { name: "total_timer_time", scale: 1000, units: "s" },
+    9: { name: "total_distance", scale: 100, units: "m" },
+    13: { name: "avg_speed", scale: 1000, units: "m/s" },
+    14: { name: "max_speed", scale: 1000, units: "m/s" },
+    15: { name: "avg_heart_rate", units: "bpm" },
+    16: { name: "max_heart_rate", units: "bpm" },
+    17: { name: "avg_cadence", units: "rpm" },
+    18: { name: "max_cadence", units: "rpm" },
+    19: { name: "avg_power", units: "watts" },
+    20: { name: "max_power", units: "watts" },
+    // Enhanced speed fields
+    124: { name: "enhanced_avg_speed", scale: 1000, units: "m/s" },
+    125: { name: "enhanced_max_speed", scale: 1000, units: "m/s" },
+  },
+  [MesgNum.SESSION]: {
+    253: { name: "timestamp" },
+    2: { name: "start_time" },
+    7: { name: "total_elapsed_time", scale: 1000, units: "s" },
+    8: { name: "total_timer_time", scale: 1000, units: "s" },
+    9: { name: "total_distance", scale: 100, units: "m" },
+    11: { name: "total_calories", units: "kcal" },
+    14: { name: "avg_speed", scale: 1000, units: "m/s" },
+    15: { name: "max_speed", scale: 1000, units: "m/s" },
+    16: { name: "avg_heart_rate", units: "bpm" },
+    17: { name: "max_heart_rate", units: "bpm" },
+    18: { name: "avg_cadence", units: "rpm" },
+    19: { name: "max_cadence", units: "rpm" },
+    20: { name: "avg_power", units: "watts" },
+    21: { name: "max_power", units: "watts" },
+    // Enhanced speed fields
+    124: { name: "enhanced_avg_speed", scale: 1000, units: "m/s" },
+    125: { name: "enhanced_max_speed", scale: 1000, units: "m/s" },
+  }
+};

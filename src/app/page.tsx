@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import FileUploader from "@/components/FileUploader";
 import {WassermanChart} from "@/components/WassermanChart";
 import { Clock, Gauge, BarChart3, LayoutGrid, Info, Activity } from "lucide-react";
@@ -827,6 +828,13 @@ export default function Home() {
               <Gauge className="w-6 h-6 text-white" />
             </div>
             <h1 className="text-xl font-bold tracking-tight">VeloGraph CPET Analytics</h1>
+            <nav className="ml-8 flex space-x-4">
+              <Link href="/" className="text-sm font-medium text-blue-600 border-b-2 border-blue-600">CPET</Link>
+              <Link href="/activities" className="text-sm font-medium text-gray-500 hover:text-gray-700 flex items-center">
+                <Activity className="w-4 h-4 mr-1" />
+                FIT Activities
+              </Link>
+            </nav>
           </div>
           {data && (
             <div className="flex items-center space-x-4">
