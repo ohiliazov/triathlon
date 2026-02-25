@@ -4,13 +4,62 @@ import path from "path";
 import { processFitFile } from "./fitProcessor";
 
 function nodeBufferToArrayBuffer(buf: Buffer): ArrayBuffer {
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
 }
 
-describe("fitProcessor - FIT parsing smoke test", () => {
+describe("fitProcessor - FIT parsing", () => {
   const dir = path.resolve(__dirname, "../../data/fitfiles");
+  const downloadsDir = path.resolve(__dirname, "../../downloads");
 
-  it("should parse at least one FIT file and produce records or a session", () => {
+  it("should parse the specific regression activity and match zones", () => {
+    const filePath = path.join(downloadsDir, "21977805641_ACTIVITY.fit");
+    if (!existsSync(filePath)) {
+      console.warn(`Regression file not found: ${filePath}`);
+      return;
+    }
+
+    const buf = readFileSync(filePath);
+    const result = processFitFile(nodeBufferToArrayBuffer(buf));
+
+    expect(result.hr_zones).toBeDefined();
+    expect(result.hr_zones?.length).toBeGreaterThanOrEqual(5);
+
+    // Verify the specific zones from the issue description
+    // Zone 1: 86 - 125 bpm -> high_bpm should be 125
+    // Zone 2: 126 - 145 bpm -> high_bpm should be 145
+    // Zone 3: 146 - 158 bpm -> high_bpm should be 158
+    // Zone 4: 159 - 172 bpm -> high_bpm should be 172
+    // Zone 5: > 173 bpm -> high_bpm should be 188 (max HR in file)
+
+    const z1 = result.hr_zones?.find(z => z.name === "Zone 1");
+    const z2 = result.hr_zones?.find(z => z.name === "Zone 2");
+    const z3 = result.hr_zones?.find(z => z.name === "Zone 3");
+    const z4 = result.hr_zones?.find(z => z.name === "Zone 4");
+    const z5 = result.hr_zones?.find(z => z.name === "Zone 5");
+
+    expect(z1?.high_bpm).toBe(125);
+    expect(z2?.high_bpm).toBe(145);
+    expect(z3?.high_bpm).toBe(158);
+    expect(z4?.high_bpm).toBe(172);
+    expect(z5?.high_bpm).toBe(188);
+  });
+
+  it("should parse workout steps if present", () => {
+    const filePath = path.join(downloadsDir, "21977805641_ACTIVITY.fit");
+    if (!existsSync(filePath)) return;
+
+    const buf = readFileSync(filePath);
+    const result = processFitFile(nodeBufferToArrayBuffer(buf));
+
+    // This file might not have workout steps, but we should test the structure if it does
+    if (result.workout_steps) {
+      expect(Array.isArray(result.workout_steps)).toBe(true);
+      expect(result.workout_steps.length).toBeGreaterThan(0);
+      expect(result.workout_steps[0]).toHaveProperty("message_index");
+    }
+  });
+
+  it("should parse at least one FIT file from data dir", () => {
     if (!existsSync(dir)) {
       console.warn(`Directory not found: ${dir}`);
       return; // Skip if directory does not exist in CI

@@ -31,12 +31,12 @@ describe("dataProcessor - Real Data Validation", () => {
     expect(calculatedAt).toBeDefined();
     expect(calculatedRc).toBeDefined();
 
-    if (calculatedAt !== undefined) {
+    if (calculatedAt !== undefined && calculatedAt !== null && at !== null) {
       const atDiff = Math.abs(at - calculatedAt);
       expect(atDiff).toBeLessThanOrEqual(1.0); // 1 minute tolerance
     }
 
-    if (calculatedRc !== undefined) {
+    if (calculatedRc !== undefined && calculatedRc !== null && rc !== null) {
       const rcDiff = Math.abs(rc - calculatedRc);
       expect(rcDiff).toBeLessThanOrEqual(1.5); // 1.5 minute tolerance for RC
     }
