@@ -18,6 +18,7 @@ interface ActivityChartProps {
   layout?: any;
   height?: number;
   revision?: number;
+  extraControls?: React.ReactNode;
 }
 
 export function ActivityChart({
@@ -26,6 +27,7 @@ export function ActivityChart({
   layout: customLayout,
   height = 300,
   revision,
+  extraControls,
 }: ActivityChartProps) {
   const mergedLayout = useMemo(() => {
     const baseLayout: any = {
@@ -60,7 +62,10 @@ export function ActivityChart({
 
   return (
     <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-      <h3 className="text-lg font-medium text-gray-800 mb-4">{title}</h3>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-medium text-gray-800">{title}</h3>
+        {extraControls && <div>{extraControls}</div>}
+      </div>
       <Plot
         data={data}
         layout={mergedLayout}

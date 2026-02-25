@@ -174,8 +174,6 @@ describe("activityUtils - Chart Data Preparation", () => {
     expect(chartData).not.toBeNull();
     expect(chartData?.heartRate.data.length).toBeGreaterThan(0);
     expect(chartData?.paceSpeed.data.length).toBeGreaterThan(0);
-    expect(chartData?.altitude.data.length).toBeGreaterThan(0);
-    expect(chartData?.cadence.data.length).toBeGreaterThan(0);
 
     // Verify trace structure
     const hrTrace = chartData?.heartRate.data[0];

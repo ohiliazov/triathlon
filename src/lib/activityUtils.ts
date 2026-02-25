@@ -556,6 +556,7 @@ export function prepareActivityChartData(
     }
   }
 
+  // --- Altitude Section (used for overlay and data) ---
   const altitudeData = calculateMovingAverage(
     activity.records,
     recordTimes,
@@ -638,101 +639,9 @@ export function prepareActivityChartData(
     },
   };
 
-  // --- Altitude Chart ---
-  const altitudeTraces = [];
-  const altTrace: any = createTrace(
-    smoothingWindow > 0 ? `Altitude (${smoothingWindow}s avg)` : "Altitude",
-    altitudeData,
-    "#6b7280",
-    "m",
-    false,
-    0,
-    "y",
-    "solid",
-    "altitude-main",
-  );
-  altTrace.fill = "tozeroy" as const;
-  altTrace.fillcolor = "rgba(107, 114, 128, 0.2)";
-  altTrace.line.width = 1;
-  altitudeTraces.push(altTrace);
-
-  const altitudeChart = {
-    data: altitudeTraces,
-    layout: {
-      ...commonLayout,
-      title: { text: "Altitude", font: { size: 14 } },
-      yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: { text: "m" } },
-    },
-  };
-
-  // --- Cadence Chart ---
-  const cadenceTraces = [];
-  const cadData = calculateMovingAverage(
-    activity.records,
-    recordTimes,
-    "cadence",
-    smoothingWindow,
-  );
-  cadenceTraces.push(
-    createTrace(
-      smoothingWindow > 0 ? `Cadence (${smoothingWindow}s avg)` : "Cadence",
-      cadData,
-      "#10b981",
-      "rpm",
-      false,
-      0,
-      "y",
-      "solid",
-      "cadence-main",
-    ),
-  );
-
-  const cadenceChart = {
-    data: cadenceTraces,
-    layout: {
-      ...commonLayout,
-      title: { text: "Cadence", font: { size: 14 } },
-      yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: { text: "rpm" } },
-    },
-  };
-
-  // --- Power Chart ---
-  const powerTraces = [];
-  const powData = calculateMovingAverage(
-    activity.records,
-    recordTimes,
-    "power",
-    smoothingWindow,
-  );
-  powerTraces.push(
-    createTrace(
-      smoothingWindow > 0 ? `Power (${smoothingWindow}s avg)` : "Power",
-      powData,
-      "#a855f7",
-      "watts",
-      false,
-      0,
-      "y",
-      "solid",
-      "power-main",
-    ),
-  );
-
-  const powerChart = {
-    data: powerTraces,
-    layout: {
-      ...commonLayout,
-      title: { text: "Power", font: { size: 14 } },
-      yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: { text: "watts" } },
-    },
-  };
-
   return {
     heartRate: hrChart,
     paceSpeed: paceSpeedChart,
-    altitude: altitudeChart,
-    cadence: cadenceChart,
-    power: powerChart,
   };
 }
 

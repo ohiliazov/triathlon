@@ -21,6 +21,7 @@ import {
 } from "@/lib/activityUtils";
 import FitFileUploader from "@/components/FitFileUploader";
 import { ActivityChart } from "@/components/ActivityChart";
+import { LapsTable } from "@/components/LapsTable";
 
 export default function ActivitiesPage() {
   const [activity, setActivity] = useState<ProcessedActivity | null>(null);
@@ -105,13 +106,6 @@ export default function ActivitiesPage() {
     sport: activity.session?.sport || "Activity",
   };
 
-  const hasPower = activity.records.some(
-    (r) => r.power !== undefined && r.power !== null,
-  );
-  const hasCadence = activity.records.some(
-    (r) => r.cadence !== undefined && r.cadence !== null,
-  );
-
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
       {/* Header */}
@@ -171,7 +165,7 @@ export default function ActivitiesPage() {
               <span>Display Settings</span>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
                   Smoothing
@@ -253,46 +247,6 @@ export default function ActivitiesPage() {
                   </button>
                 </div>
               </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                  Overlays
-                </label>
-                <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1.5">
-                  <label className="flex items-center space-x-2 cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      checked={settings.overlayPaceOnHR}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          overlayPaceOnHR: e.target.checked,
-                        })
-                      }
-                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-xs text-gray-600 group-hover:text-gray-900 transition-colors">
-                      HR+Pace
-                    </span>
-                  </label>
-                  <label className="flex items-center space-x-2 cursor-pointer group">
-                    <input
-                      type="checkbox"
-                      checked={settings.overlayElevationOnSpeed}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          overlayElevationOnSpeed: e.target.checked,
-                        })
-                      }
-                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <span className="text-xs text-gray-600 group-hover:text-gray-900 transition-colors">
-                      Speed+Elev
-                    </span>
-                  </label>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -304,6 +258,15 @@ export default function ActivitiesPage() {
             data={charts.heartRate.data}
             layout={charts.heartRate.layout}
             revision={revision}
+            extraControls={
+              <OverlayToggle
+                label={settings.usePace ? "Show Pace" : "Show Speed"}
+                checked={settings.overlayPaceOnHR}
+                onChange={(checked) =>
+                  setSettings({ ...settings, overlayPaceOnHR: checked })
+                }
+              />
+            }
           />
 
           <ActivityChart
@@ -311,93 +274,28 @@ export default function ActivitiesPage() {
             data={charts.paceSpeed.data}
             layout={charts.paceSpeed.layout}
             revision={revision}
+            extraControls={
+              <OverlayToggle
+                label="Show Elevation"
+                checked={settings.overlayElevationOnSpeed}
+                onChange={(checked) =>
+                  setSettings({ ...settings, overlayElevationOnSpeed: checked })
+                }
+              />
+            }
           />
-
-          {hasPower && (
-            <ActivityChart
-              title="Power"
-              data={charts.power.data}
-              layout={charts.power.layout}
-              revision={revision}
-            />
-          )}
-
-          <ActivityChart
-            title="Elevation"
-            data={charts.altitude.data}
-            layout={charts.altitude.layout}
-            revision={revision}
-          />
-
-          {hasCadence && (
-            <ActivityChart
-              title="Cadence"
-              data={charts.cadence.data}
-              layout={charts.cadence.layout}
-              revision={revision}
-            />
-          )}
         </div>
 
-        {/* Laps Table */}
+        {/* Laps Section */}
         {activity.laps && activity.laps.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-800">Laps</h2>
-              <span className="text-xs font-medium text-gray-500 bg-gray-50 px-2 py-1 rounded border">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">Laps Summary</h2>
+              <span className="text-xs font-medium text-gray-500 bg-gray-100 px-3 py-1 rounded-full border border-gray-200">
                 {activity.laps.length} Laps Total
               </span>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    <th className="px-6 py-3">Lap</th>
-                    <th className="px-6 py-3">Distance</th>
-                    <th className="px-6 py-3">Duration</th>
-                    <th className="px-6 py-3">Avg Pace/Speed</th>
-                    <th className="px-6 py-3 text-right">Avg HR</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {activity.laps.map((lap, i) => {
-                    const lapDist = lap.total_distance
-                      ? (lap.total_distance / 1000).toFixed(2)
-                      : "0.00";
-                    const lapTime = formatDuration(lap.total_timer_time || 0);
-                    const lapPace =
-                      lap.avg_speed && lap.avg_speed > 0
-                        ? settings.usePace
-                          ? `${formatPace(1000 / (lap.avg_speed * 60))}/km`
-                          : `${(lap.avg_speed * 3.6).toFixed(1)} km/h`
-                        : "--";
-
-                    return (
-                      <tr
-                        key={i}
-                        className="hover:bg-blue-50/50 transition-colors"
-                      >
-                        <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                          {i + 1}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {lapDist} km
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {lapTime}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {lapPace}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600 text-right">
-                          {lap.avg_heart_rate || "--"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <LapsTable laps={activity.laps} usePace={settings.usePace} />
           </div>
         )}
       </main>
@@ -432,5 +330,27 @@ function StatCard({ label, value, unit, icon }: StatCardProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+interface OverlayToggleProps {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}
+
+function OverlayToggle({ label, checked, onChange }: OverlayToggleProps) {
+  return (
+    <label className="flex items-center space-x-2 cursor-pointer group py-1 px-2 hover:bg-gray-50 rounded-lg transition-colors border border-transparent hover:border-gray-200">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+      />
+      <span className="text-xs font-medium text-gray-500 group-hover:text-gray-700 transition-colors whitespace-nowrap">
+        {label}
+      </span>
+    </label>
   );
 }

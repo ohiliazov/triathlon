@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@garmin/fitsdk": "^21.195.0",
+    "@tanstack/react-table": "^8.21.3",
     "clsx": "^2.1.1",
     "lucide-react": "^0.575.0",
     "next": "16.1.6",
