@@ -1,72 +1,82 @@
-import { FitParser } from "./fitParser";
-import { MesgNum, PROFILE } from "./fitProfile";
-
-const FIT_EPOCH_MS = 631065600000;
+import { Decoder, Stream } from "@garmin/fitsdk";
 
 export interface ProcessedActivity {
   records: any[];
   laps: any[];
   session: any;
+  hr_zones?: { high_bpm: number | null; name?: string | null }[];
+}
+
+function camelToSnake(name: string): string {
+  return name
+    .replace(/([A-Z])/g, "_$1")
+    .replace(/__/g, "_")
+    .toLowerCase();
+}
+
+function normalizeMessage(obj: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const key = camelToSnake(k);
+    if (v instanceof Date) {
+      out[key] = v.toISOString();
+    } else if (Array.isArray(v)) {
+      out[key] = v.map((x) => (x instanceof Date ? x.toISOString() : x));
+    } else {
+      out[key] = v;
+    }
+  }
+  return out;
 }
 
 export function processFitFile(buffer: ArrayBuffer): ProcessedActivity {
-  const parser = new FitParser(buffer);
-  const messages = parser.parse();
+  const stream = Stream.fromArrayBuffer(buffer);
+  const decoder = new Decoder(stream);
+  const { messages } = decoder.read();
 
-  const records: any[] = [];
-  const laps: any[] = [];
+  const recordsRaw: any[] = (messages as any).recordMesgs || [];
+  const lapsRaw: any[] = (messages as any).lapMesgs || [];
+  const sessionsRaw: any[] = (messages as any).sessionMesgs || [];
+
+  const records = recordsRaw.map((m) => {
+    const msg = normalizeMessage(m);
+    if (typeof msg.enhanced_speed === "number") msg.speed = msg.enhanced_speed;
+    if (typeof msg.enhanced_altitude === "number") msg.altitude = msg.enhanced_altitude;
+    return msg;
+  });
+
+  const laps = lapsRaw.map((m) => {
+    const msg = normalizeMessage(m);
+    if (typeof msg.enhanced_avg_speed === "number") msg.avg_speed = msg.enhanced_avg_speed;
+    if (typeof msg.enhanced_max_speed === "number") msg.max_speed = msg.enhanced_max_speed;
+    return msg;
+  });
+
   let session: any = null;
-
-  for (const msg of messages) {
-    const profileFields = PROFILE[msg.globalMessageNumber];
-    const processedFields: any = {};
-
-    for (const [id, value] of Object.entries(msg.fields)) {
-      const fieldId = parseInt(id);
-      const fieldDef = profileFields ? profileFields[fieldId] : null;
-
-      if (fieldDef) {
-        let finalValue = value;
-        if (typeof value === "number" && value !== null) {
-          finalValue = (value / (fieldDef.scale || 1)) - (fieldDef.offset || 0);
-        }
-
-        if (fieldDef.name === "timestamp" || fieldDef.name === "start_time") {
-          finalValue = new Date(FIT_EPOCH_MS + finalValue * 1000).toISOString();
-        }
-        processedFields[fieldDef.name] = finalValue;
-      } else {
-        processedFields[`field_${id}`] = value;
-      }
-    }
-
-    // Prefer enhanced fields when available
-    if (msg.globalMessageNumber === MesgNum.RECORD) {
-      if (processedFields.enhanced_speed !== undefined) {
-        processedFields.speed = processedFields.enhanced_speed;
-      }
-      if (processedFields.enhanced_altitude !== undefined) {
-        processedFields.altitude = processedFields.enhanced_altitude;
-      }
-      records.push(processedFields);
-    } else if (msg.globalMessageNumber === MesgNum.LAP) {
-      if (processedFields.enhanced_avg_speed !== undefined) {
-        processedFields.avg_speed = processedFields.enhanced_avg_speed;
-      }
-      if (processedFields.enhanced_max_speed !== undefined) {
-        processedFields.max_speed = processedFields.enhanced_max_speed;
-      }
-      laps.push(processedFields);
-    } else if (msg.globalMessageNumber === MesgNum.SESSION) {
-      if (processedFields.enhanced_avg_speed !== undefined) {
-        processedFields.avg_speed = processedFields.enhanced_avg_speed;
-      }
-      if (processedFields.enhanced_max_speed !== undefined) {
-        processedFields.max_speed = processedFields.enhanced_max_speed;
-      }
-      session = processedFields;
-    }
+  if (sessionsRaw.length > 0) {
+    const s = normalizeMessage(sessionsRaw[0]);
+    if (typeof s.enhanced_avg_speed === "number") s.avg_speed = s.enhanced_avg_speed;
+    if (typeof s.enhanced_max_speed === "number") s.max_speed = s.enhanced_max_speed;
+    session = s;
   }
 
-  return { records, laps, session };
+  // Optional: derive HR zones if present in SDK output (hrZoneMesgs) — keep undefined if not present
+  const hrZoneMesgs: any[] = (messages as any).hrZoneMesgs || [];
+  const hr_zones = hrZoneMesgs.map((z) => {
+    const zn = normalizeMessage(z);
+    const high = typeof zn.high_bpm === "number" ? zn.high_bpm : null;
+    const name = typeof zn.name === "string" ? zn.name : null;
+    return { high_bpm: high, name };
+  });
+
+  const sortedZones = hr_zones
+    .filter((z) => z.high_bpm !== null)
+    .sort((a, b) => (a.high_bpm! - b.high_bpm!));
+
+  return {
+    records,
+    laps,
+    session,
+    hr_zones: sortedZones.length ? sortedZones : (hr_zones.length ? hr_zones : undefined),
+  };
 }

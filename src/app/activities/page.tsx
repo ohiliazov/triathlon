@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
-import { Gauge, Activity, Clock } from "lucide-react";
+import { Gauge, Activity } from "lucide-react";
 import { ProcessedActivity } from "@/lib/fitProcessor";
 import FitFileUploader from "@/components/FitFileUploader";
 
@@ -15,30 +15,35 @@ const Plot = dynamic(() => import("react-plotly.js"), {
   ),
 });
 
-  const formatDuration = (seconds: number | null) => {
-    if (seconds === null || isNaN(seconds)) return "--:--";
-    const total = Math.round(seconds);
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    if (h > 0) {
-      return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-    }
-    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-  };
+const formatDuration = (seconds: number | null) => {
+  if (seconds === null || isNaN(seconds)) return "--:--";
+  const total = Math.round(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, "0")}:${s
+      .toString()
+      .padStart(2, "0")}`;
+  }
+  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+};
 
-  const formatPace = (decimalMinutes: number | null) => {
-    if (decimalMinutes === null || isNaN(decimalMinutes) || decimalMinutes <= 0) return "--:--";
-    const totalSeconds = Math.round(decimalMinutes * 60);
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = totalSeconds % 60;
+const formatPace = (decimalMinutes: number | null) => {
+  if (decimalMinutes === null || isNaN(decimalMinutes) || decimalMinutes <= 0)
+    return "--:--";
+  const totalSeconds = Math.round(decimalMinutes * 60);
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
 
-    if (h > 0) {
-      return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-    }
-    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-  };
+  if (h > 0) {
+    return `${h}:${m.toString().padStart(2, "0")}:${s
+      .toString()
+      .padStart(2, "0")}`;
+  }
+  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+};
 
 /**
  * Calculates a time-based moving average for FIT records.
@@ -47,7 +52,7 @@ function calculateMovingAverage(
   records: any[],
   yKey: string,
   windowSeconds: number,
-  yTransform?: (val: number) => number | null
+  yTransform?: (val: number) => number | null,
 ): (number | null)[] {
   if (windowSeconds <= 1) {
     return records.map((r) => {
@@ -104,9 +109,63 @@ function calculateMovingAverage(
   return result;
 }
 
+/**
+ * Calculates a block-based average for FIT records (non-overlapping windows).
+ */
+function calculateBlockAverage(
+  records: any[],
+  yKey: string,
+  windowSeconds: number,
+  yTransform?: (val: number) => number | null,
+): (number | null)[] {
+  if (windowSeconds <= 1) {
+    return records.map((r) => {
+      const val = r[yKey];
+      if (val === undefined || val === null) return null;
+      return yTransform ? yTransform(val) : val;
+    });
+  }
+
+  const result: (number | null)[] = new Array(records.length).fill(null);
+  const times = records.map((r) => new Date(r.timestamp).getTime());
+  if (times.length === 0) return [];
+
+  const startTime = times[0];
+  const windowMs = windowSeconds * 1000;
+
+  let i = 0;
+  while (i < records.length) {
+    const currentIntervalStart =
+      startTime + Math.floor((times[i] - startTime) / windowMs) * windowMs;
+    const currentIntervalEnd = currentIntervalStart + windowMs;
+
+    let sum = 0;
+    let count = 0;
+    let j = i;
+    while (j < records.length && times[j] < currentIntervalEnd) {
+      const val = records[j][yKey];
+      if (val !== null && val !== undefined && !isNaN(val)) {
+        sum += val;
+        count++;
+      }
+      j++;
+    }
+
+    const avg = count > 0 ? sum / count : null;
+    const transformedAvg = avg !== null && yTransform ? yTransform(avg) : avg;
+
+    for (let k = i; k < j; k++) {
+      result[k] = transformedAvg;
+    }
+    i = j;
+  }
+  return result;
+}
+
 export default function ActivitiesPage() {
   const [activity, setActivity] = useState<ProcessedActivity | null>(null);
   const [smoothingWindow, setSmoothingWindow] = useState<number>(0);
+  const [intervalWindow, setIntervalWindow] = useState<number>(0);
 
   const handleActivityLoaded = (data: ProcessedActivity) => {
     setActivity(data);
@@ -117,78 +176,268 @@ export default function ActivitiesPage() {
 
     const timestamps = activity.records.map((r) => r.timestamp);
 
-    // Heart Rate
-    const hrData = calculateMovingAverage(activity.records, "heart_rate", smoothingWindow);
+    const createTrace = (
+      name: string,
+      yData: (number | null)[],
+      color: string,
+      units: string,
+      isPace: boolean = false,
+      precision: number = 1,
+    ) => {
+      return {
+        x: timestamps,
+        y: yData,
+        name: name,
+        type: "scatter" as const,
+        mode: "lines" as const,
+        line: { color, width: 2 },
+        text: isPace ? yData.map((p) => (p ? formatPace(p) : "")) : undefined,
+        hovertemplate: isPace
+          ? "%{text}/km<extra></extra>"
+          : `%{y:.${precision}f} ${units}<extra></extra>`,
+      };
+    };
 
-    // Speed (m/s -> km/h)
-    const speedData = calculateMovingAverage(activity.records, "speed", smoothingWindow, (v) => v * 3.6);
+    const heartRateTraces = [];
+    if (smoothingWindow > 0 || intervalWindow === 0) {
+      const data = calculateMovingAverage(
+        activity.records,
+        "heart_rate",
+        smoothingWindow,
+      );
+      heartRateTraces.push(
+        createTrace(
+          smoothingWindow > 0 ? `HR (${smoothingWindow}s avg)` : "Heart Rate",
+          data,
+          "#dc2626",
+          "bpm",
+          false,
+          0,
+        ),
+      );
+    }
+    if (intervalWindow > 0) {
+      const data = calculateBlockAverage(
+        activity.records,
+        "heart_rate",
+        intervalWindow,
+      );
+      heartRateTraces.push(
+        createTrace(
+          `HR (${intervalWindow}s block)`,
+          data,
+          "#f87171",
+          "bpm",
+          false,
+          0,
+        ),
+      );
+    }
 
-    // Pace (m/s -> min/km)
-    const paceData = calculateMovingAverage(activity.records, "speed", smoothingWindow, (v) => {
-      if (!v || v < 0.2) return null;
-      const dec = 1000 / (v * 60);
-      return dec > 60 ? null : dec;
-    });
+    const paceTraces = [];
+    if (smoothingWindow > 0 || intervalWindow === 0) {
+      const data = calculateMovingAverage(
+        activity.records,
+        "speed",
+        smoothingWindow,
+        (v) => {
+          if (!v || v < 0.2) return null;
+          const dec = 1000 / (v * 60);
+          return dec > 60 ? null : dec;
+        },
+      );
+      paceTraces.push(
+        createTrace(
+          smoothingWindow > 0 ? `Pace (${smoothingWindow}s avg)` : "Pace",
+          data,
+          "#8b5cf6",
+          "min/km",
+          true,
+        ),
+      );
+    }
+    if (intervalWindow > 0) {
+      const data = calculateBlockAverage(
+        activity.records,
+        "speed",
+        intervalWindow,
+        (v) => {
+          if (!v || v < 0.2) return null;
+          const dec = 1000 / (v * 60);
+          return dec > 60 ? null : dec;
+        },
+      );
+      paceTraces.push(
+        createTrace(
+          `Pace (${intervalWindow}s block)`,
+          data,
+          "#f59e0b",
+          "min/km",
+          true,
+        ),
+      );
+    }
 
-    // Altitude
-    const altitudeData = calculateMovingAverage(activity.records, "altitude", smoothingWindow);
+    const speedTraces = [];
+    if (smoothingWindow > 0 || intervalWindow === 0) {
+      const data = calculateMovingAverage(
+        activity.records,
+        "speed",
+        smoothingWindow,
+        (v) => v * 3.6,
+      );
+      speedTraces.push(
+        createTrace(
+          smoothingWindow > 0 ? `Speed (${smoothingWindow}s avg)` : "Speed",
+          data,
+          "#2563eb",
+          "km/h",
+        ),
+      );
+    }
+    if (intervalWindow > 0) {
+      const data = calculateBlockAverage(
+        activity.records,
+        "speed",
+        intervalWindow,
+        (v) => v * 3.6,
+      );
+      speedTraces.push(
+        createTrace(
+          `Speed (${intervalWindow}s block)`,
+          data,
+          "#10b981",
+          "km/h",
+        ),
+      );
+    }
 
-    // Cadence
-    const cadenceData = calculateMovingAverage(activity.records, "cadence", smoothingWindow);
+    const altitudeTraces = [];
+    const altData = calculateMovingAverage(
+      activity.records,
+      "altitude",
+      smoothingWindow,
+    );
+    const altTrace = createTrace(
+      smoothingWindow > 0 ? `Altitude (${smoothingWindow}s avg)` : "Altitude",
+      altData,
+      "#6b7280",
+      "m",
+    );
+    (altTrace as any).fill = "tozeroy";
+    (altTrace as any).fillcolor = "rgba(107, 114, 128, 0.2)";
+    (altTrace as any).line.width = 1;
+    altitudeTraces.push(altTrace);
+
+    const cadenceTraces = [];
+    const cadData = calculateMovingAverage(
+      activity.records,
+      "cadence",
+      smoothingWindow,
+    );
+    cadenceTraces.push(
+      createTrace(
+        smoothingWindow > 0 ? `Cadence (${smoothingWindow}s avg)` : "Cadence",
+        cadData,
+        "#10b981",
+        "rpm",
+        false,
+        0,
+      ),
+    );
 
     return {
-      heartRate: {
-        x: timestamps,
-        y: hrData,
-        name: smoothingWindow > 0 ? `HR (${smoothingWindow}s avg)` : "Heart Rate",
-        type: "scatter" as const,
-        mode: "lines" as const,
-        line: { color: "#dc2626", width: 2 },
-        hovertemplate: "%{y:.0f} bpm<extra></extra>",
-      },
-      speed: {
-        x: timestamps,
-        y: speedData,
-        name: smoothingWindow > 0 ? `Speed (${smoothingWindow}s avg)` : "Speed",
-        type: "scatter" as const,
-        mode: "lines" as const,
-        line: { color: "#2563eb", width: 2 },
-        hovertemplate: "%{y:.1f} km/h<extra></extra>",
-      },
-      pace: {
-        x: timestamps,
-        y: paceData,
-        name: smoothingWindow > 0 ? `Pace (${smoothingWindow}s avg)` : "Pace",
-        type: "scatter" as const,
-        mode: "lines" as const,
-        line: { color: "#8b5cf6", width: 2 },
-        // Hover formatting for pace (MM:SS)
-        text: paceData.map((p) => (p ? formatPace(p) : "")),
-        hovertemplate: "%{text}/km<extra></extra>",
-      },
-      altitude: {
-        x: timestamps,
-        y: altitudeData,
-        name: smoothingWindow > 0 ? `Altitude (${smoothingWindow}s avg)` : "Altitude",
-        type: "scatter" as const,
-        mode: "lines" as const,
-        fill: "tozeroy" as const,
-        line: { color: "#6b7280", width: 1 },
-        fillcolor: "rgba(107, 114, 128, 0.2)",
-        hovertemplate: "%{y:.1f} m<extra></extra>",
-      },
-      cadence: {
-        x: timestamps,
-        y: cadenceData,
-        name: smoothingWindow > 0 ? `Cadence (${smoothingWindow}s avg)` : "Cadence",
-        type: "scatter" as const,
-        mode: "lines" as const,
-        line: { color: "#10b981", width: 2 },
-        hovertemplate: "%{y:.0f} rpm<extra></extra>",
-      },
+      heartRate: heartRateTraces,
+      pace: paceTraces,
+      speed: speedTraces,
+      altitude: altitudeTraces,
+      cadence: cadenceTraces,
     };
-  }, [activity, smoothingWindow]);
+  }, [activity, smoothingWindow, intervalWindow]);
 
+  const hrZoneShapes = useMemo(() => {
+    if (!activity || !activity.records || !activity.records.length)
+      return [] as any[];
+
+    const hrValues = activity.records
+      .map((r) => r.heart_rate as number | null)
+      .filter((v): v is number => typeof v === "number" && !isNaN(v));
+    if (!hrValues.length) return [] as any[];
+
+    const minHR = Math.min(...hrValues);
+    const maxHRFromData = Math.max(...hrValues);
+
+    // Prefer device-provided zones; otherwise, derive Garmin-style zones from HRmax
+    const providedZones = (activity.hr_zones || []).filter(
+      (z) => z.high_bpm !== null,
+    ) as { high_bpm: number; name?: string | null }[];
+
+    let sorted: { high_bpm: number; name?: string | null }[];
+    if (providedZones.length) {
+      sorted = [...providedZones].sort((a, b) => a.high_bpm - b.high_bpm);
+    } else {
+      const hrMax =
+        (activity.session?.max_heart_rate as number | undefined) ||
+        maxHRFromData;
+      const upperBounds = [0.6, 0.7, 0.8, 0.9].map((p) =>
+        Math.round(hrMax * p),
+      );
+      sorted = upperBounds.map((ub) => ({ high_bpm: ub }));
+    }
+
+    const colors = [
+      "rgba(107,114,128,0.15)", // gray-600 @15%
+      "rgba(59,130,246,0.12)", // blue-500 @12%
+      "rgba(16,185,129,0.12)", // emerald-500 @12%
+      "rgba(249,115,22,0.12)", // orange-500 @12%
+      "rgba(220,38,38,0.12)", // red-600 @12%
+    ];
+
+    const shapes: any[] = [];
+    let lower = minHR;
+
+    sorted.forEach((z, idx) => {
+      const upper = z.high_bpm;
+      if (upper <= lower) {
+        lower = upper;
+        return;
+      }
+      const color = colors[Math.min(idx, colors.length - 2)]; // keep last color for final zone
+      shapes.push({
+        type: "rect",
+        xref: "paper",
+        x0: 0,
+        x1: 1,
+        yref: "y",
+        y0: lower,
+        y1: upper,
+        fillcolor: color,
+        line: { width: 0 },
+        layer: "below",
+      });
+      lower = upper;
+    });
+
+    const finalUpper = providedZones.length
+      ? Math.max(sorted[sorted.length - 1].high_bpm, maxHRFromData)
+      : maxHRFromData;
+    if (lower < finalUpper) {
+      shapes.push({
+        type: "rect",
+        xref: "paper",
+        x0: 0,
+        x1: 1,
+        yref: "y",
+        y0: lower,
+        y1: finalUpper,
+        fillcolor: colors[colors.length - 1],
+        line: { width: 0 },
+        layer: "below",
+      });
+    }
+
+    return shapes;
+  }, [activity]);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
@@ -198,10 +447,20 @@ export default function ActivitiesPage() {
             <div className="bg-blue-600 p-2 rounded-lg">
               <Gauge className="w-6 h-6 text-white" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight">VeloGraph CPET Analytics</h1>
+            <h1 className="text-xl font-bold tracking-tight">
+              VeloGraph CPET Analytics
+            </h1>
             <nav className="ml-8 flex space-x-4">
-              <Link href="/" className="text-sm font-medium text-gray-500 hover:text-gray-700">CPET</Link>
-              <Link href="/activities" className="text-sm font-medium text-blue-600 border-b-2 border-blue-600 flex items-center">
+              <Link
+                href="/"
+                className="text-sm font-medium text-gray-500 hover:text-gray-700"
+              >
+                CPET
+              </Link>
+              <Link
+                href="/activities"
+                className="text-sm font-medium text-blue-600 border-b-2 border-blue-600 flex items-center"
+              >
                 <Activity className="w-4 h-4 mr-1" />
                 FIT Activities
               </Link>
@@ -210,19 +469,40 @@ export default function ActivitiesPage() {
 
           {activity && (
             <div className="flex items-center space-x-4">
-               <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200">
+              <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200">
                 <div className="flex items-center px-2 mr-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                   Smoothing:
+                  Smoothing:
                 </div>
                 {[0, 3, 5, 10, 30, 60].map((w) => (
                   <button
                     key={w}
                     onClick={() => setSmoothingWindow(w)}
                     className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                      smoothingWindow === w ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                      smoothingWindow === w
+                        ? "bg-white text-blue-600 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
                     }`}
                   >
                     {w === 0 ? "Instant" : `${w}s`}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200">
+                <div className="flex items-center px-2 mr-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                  Intervals:
+                </div>
+                {[0, 3, 5, 10, 30, 60].map((w) => (
+                  <button
+                    key={w}
+                    onClick={() => setIntervalWindow(w)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
+                      intervalWindow === w
+                        ? "bg-white text-blue-600 shadow-sm"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                  >
+                    {w === 0 ? "Off" : `${w}s`}
                   </button>
                 ))}
               </div>
@@ -233,8 +513,12 @@ export default function ActivitiesPage() {
 
       <div className="container mx-auto p-6 max-w-7xl">
         <header className="mb-8">
-          <h1 className="text-3xl font-extrabold text-gray-900">Activity Analytics</h1>
-          <p className="text-gray-500">Upload and analyze your FIT activity data.</p>
+          <h1 className="text-3xl font-extrabold text-gray-900">
+            Activity Analytics
+          </h1>
+          <p className="text-gray-500">
+            Upload and analyze your FIT activity data.
+          </p>
         </header>
 
         <div className="space-y-8">
@@ -242,7 +526,8 @@ export default function ActivitiesPage() {
             <div className="py-12">
               <FitFileUploader onActivityLoaded={handleActivityLoaded} />
               <p className="mt-6 text-center text-gray-500 text-sm">
-                Upload your <b>.fit</b> file to generate activity charts and summaries.
+                Upload your <b>.fit</b> file to generate activity charts and
+                summaries.
               </p>
             </div>
           )}
@@ -250,180 +535,291 @@ export default function ActivitiesPage() {
           {activity && (
             <div className="animate-in fade-in duration-500 space-y-8">
               {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Distance</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {activity.session?.total_distance ? (activity.session.total_distance / 1000).toFixed(2) : "0.00"}
-                      <span className="text-sm font-normal text-gray-500 ml-1">km</span>
-                    </p>
-                  </div>
-                  <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Duration</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {activity.session?.total_timer_time ? formatDuration(activity.session.total_timer_time) : "00:00"}
-                    </p>
-                  </div>
-                  <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Avg HR</p>
-                    <p className="text-2xl font-bold text-red-600">
-                      {activity.session?.avg_heart_rate || "--"}
-                      <span className="text-sm font-normal text-gray-500 ml-1">bpm</span>
-                    </p>
-                  </div>
-                  <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Avg Pace</p>
-                    <p className="text-2xl font-bold text-purple-600">
-                      {(() => {
-                        const s = activity.session;
-                        if (!s) return "--:--";
-                        const hasTD = typeof s.total_timer_time === "number" && typeof s.total_distance === "number" && s.total_distance > 0;
-                        const dec = hasTD
-                          ? (s.total_timer_time / 60) / (s.total_distance / 1000)
-                          : (typeof s.avg_speed === "number" && s.avg_speed > 0 ? 1000 / (s.avg_speed * 60) : null);
-                        return dec !== null ? formatPace(dec) : "--:--";
-                      })()}
-                      <span className="text-sm font-normal text-gray-500 ml-1">/km</span>
-                    </p>
-                  </div>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                    Distance
+                  </p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {activity.session?.total_distance
+                      ? (activity.session.total_distance / 1000).toFixed(2)
+                      : "0.00"}
+                    <span className="text-sm font-normal text-gray-500 ml-1">
+                      km
+                    </span>
+                  </p>
                 </div>
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                    Duration
+                  </p>
+                  <p className="text-2xl font-bold text-gray-900">
+                    {activity.session?.total_timer_time
+                      ? formatDuration(activity.session.total_timer_time)
+                      : "00:00"}
+                  </p>
+                </div>
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                    Avg HR
+                  </p>
+                  <p className="text-2xl font-bold text-red-600">
+                    {activity.session?.avg_heart_rate || "--"}
+                    <span className="text-sm font-normal text-gray-500 ml-1">
+                      bpm
+                    </span>
+                  </p>
+                </div>
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                    Avg Pace
+                  </p>
+                  <p className="text-2xl font-bold text-purple-600">
+                    {(() => {
+                      const s = activity.session;
+                      if (!s) return "--:--";
+                      const hasTD =
+                        typeof s.total_timer_time === "number" &&
+                        typeof s.total_distance === "number" &&
+                        s.total_distance > 0;
+                      const dec = hasTD
+                        ? s.total_timer_time / 60 / (s.total_distance / 1000)
+                        : typeof s.avg_speed === "number" && s.avg_speed > 0
+                          ? 1000 / (s.avg_speed * 60)
+                          : null;
+                      return dec !== null ? formatPace(dec) : "--:--";
+                    })()}
+                    <span className="text-sm font-normal text-gray-500 ml-1">
+                      /km
+                    </span>
+                  </p>
+                </div>
+              </div>
 
-                {/* Charts */}
-                {chartData && (
-                  <div className="grid grid-cols-1 gap-6">
-                    <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-200">
-                        <Plot
-                          data={[chartData.heartRate]}
-                          layout={{
-                            title: { text: "Heart Rate", font: { size: 14 } },
-                            autosize: true,
-                            margin: { t: 40, b: 40, l: 50, r: 20 },
-                            xaxis: { showgrid: true, gridcolor: "#f3f4f6", tickformat: "%H:%M:%S" },
-                            yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: { text: "bpm" } },
-                            hovermode: "x unified",
-                          }}
-                          config={{ responsive: true, displayModeBar: false }}
-                          className="w-full h-[300px]"
-                        />
-                    </div>
+              {/* Charts */}
+              {chartData && (
+                <div className="grid grid-cols-1 gap-6">
+                  <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-200">
+                    <Plot
+                      data={chartData.heartRate}
+                      layout={{
+                        title: { text: "Heart Rate", font: { size: 14 } },
+                        autosize: true,
+                        margin: { t: 40, b: 40, l: 50, r: 20 },
+                        xaxis: {
+                          showgrid: true,
+                          gridcolor: "#f3f4f6",
+                          tickformat: "%H:%M:%S",
+                        },
+                        yaxis: {
+                          showgrid: true,
+                          gridcolor: "#f3f4f6",
+                          title: { text: "bpm" },
+                        },
+                        shapes: hrZoneShapes,
+                        hovermode: "x unified",
+                      }}
+                      config={{ responsive: true, displayModeBar: false }}
+                      className="w-full h-[300px]"
+                    />
+                  </div>
 
+                  <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-200">
+                    <Plot
+                      data={chartData.pace}
+                      layout={{
+                        title: { text: "Pace", font: { size: 14 } },
+                        autosize: true,
+                        margin: { t: 40, b: 40, l: 60, r: 20 },
+                        xaxis: {
+                          showgrid: true,
+                          gridcolor: "#f3f4f6",
+                          tickformat: "%H:%M:%S",
+                        },
+                        yaxis: {
+                          showgrid: true,
+                          gridcolor: "#f3f4f6",
+                          title: { text: "min/km" },
+                          autorange: "reversed",
+                          // Use tickvals and ticktext to show MM:SS on the Y axis
+                          tickmode: "array",
+                          tickvals: [4, 5, 6, 7, 8, 9, 10, 12, 15, 20],
+                          ticktext: [
+                            "4:00",
+                            "5:00",
+                            "6:00",
+                            "7:00",
+                            "8:00",
+                            "9:00",
+                            "10:00",
+                            "12:00",
+                            "15:00",
+                            "20:00",
+                          ],
+                        },
+                        hovermode: "x unified",
+                      }}
+                      config={{ responsive: true, displayModeBar: false }}
+                      className="w-full h-[300px]"
+                    />
+                  </div>
+
+                  <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-200">
+                    <Plot
+                      data={chartData.speed}
+                      layout={{
+                        title: { text: "Speed", font: { size: 14 } },
+                        autosize: true,
+                        margin: { t: 40, b: 40, l: 50, r: 20 },
+                        xaxis: {
+                          showgrid: true,
+                          gridcolor: "#f3f4f6",
+                          tickformat: "%H:%M:%S",
+                        },
+                        yaxis: {
+                          showgrid: true,
+                          gridcolor: "#f3f4f6",
+                          title: { text: "km/h" },
+                        },
+                        hovermode: "x unified",
+                      }}
+                      config={{ responsive: true, displayModeBar: false }}
+                      className="w-full h-[300px]"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-200">
                       <Plot
-                        data={[chartData.pace]}
+                        data={chartData.altitude}
                         layout={{
-                          title: { text: "Pace", font: { size: 14 } },
+                          title: { text: "Altitude", font: { size: 14 } },
                           autosize: true,
-                          margin: { t: 40, b: 40, l: 60, r: 20 },
-                          xaxis: { showgrid: true, gridcolor: "#f3f4f6", tickformat: "%H:%M:%S" },
+                          margin: { t: 40, b: 40, l: 50, r: 20 },
+                          xaxis: {
+                            showgrid: true,
+                            gridcolor: "#f3f4f6",
+                            tickformat: "%H:%M:%S",
+                          },
                           yaxis: {
                             showgrid: true,
                             gridcolor: "#f3f4f6",
-                            title: { text: "min/km" },
-                            autorange: "reversed",
-                            // Use tickvals and ticktext to show MM:SS on the Y axis
-                            tickmode: "array",
-                            tickvals: [4, 5, 6, 7, 8, 9, 10, 12, 15, 20],
-                            ticktext: ["4:00", "5:00", "6:00", "7:00", "8:00", "9:00", "10:00", "12:00", "15:00", "20:00"],
+                            title: { text: "m" },
                           },
                           hovermode: "x unified",
                         }}
                         config={{ responsive: true, displayModeBar: false }}
-                        className="w-full h-[300px]"
+                        className="w-full h-[250px]"
                       />
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-200">
-                        <Plot
-                          data={[chartData.altitude]}
-                          layout={{
-                            title: { text: "Altitude", font: { size: 14 } },
-                            autosize: true,
-                            margin: { t: 40, b: 40, l: 50, r: 20 },
-                            xaxis: { showgrid: true, gridcolor: "#f3f4f6", tickformat: "%H:%M:%S" },
-                            yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: { text: "m" } },
-                            hovermode: "x unified",
-                          }}
-                          config={{ responsive: true, displayModeBar: false }}
-                          className="w-full h-[250px]"
-                        />
-                      </div>
-                      <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-200">
-                        <Plot
-                          data={[chartData.cadence]}
-                          layout={{
-                            title: { text: "Cadence", font: { size: 14 } },
-                            autosize: true,
-                            margin: { t: 40, b: 40, l: 50, r: 20 },
-                            xaxis: { showgrid: true, gridcolor: "#f3f4f6", tickformat: "%H:%M:%S" },
-                            yaxis: { showgrid: true, gridcolor: "#f3f4f6", title: { text: "rpm" } },
-                            hovermode: "x unified",
-                          }}
-                          config={{ responsive: true, displayModeBar: false }}
-                          className="w-full h-[250px]"
-                        />
-                      </div>
+                    <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-200">
+                      <Plot
+                        data={chartData.cadence}
+                        layout={{
+                          title: { text: "Cadence", font: { size: 14 } },
+                          autosize: true,
+                          margin: { t: 40, b: 40, l: 50, r: 20 },
+                          xaxis: {
+                            showgrid: true,
+                            gridcolor: "#f3f4f6",
+                            tickformat: "%H:%M:%S",
+                          },
+                          yaxis: {
+                            showgrid: true,
+                            gridcolor: "#f3f4f6",
+                            title: { text: "rpm" },
+                          },
+                          hovermode: "x unified",
+                        }}
+                        config={{ responsive: true, displayModeBar: false }}
+                        className="w-full h-[250px]"
+                      />
                     </div>
                   </div>
-                )}
-
-                {/* Laps Table */}
-                {activity.laps && activity.laps.length > 0 && (
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                    <div className="p-4 border-b border-gray-100 bg-gray-50">
-                      <h2 className="font-semibold text-gray-700">Laps Summary</h2>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm">
-                        <thead>
-                          <tr className="text-gray-400 uppercase text-[10px] tracking-wider border-b border-gray-100">
-                            <th className="px-6 py-3 font-bold">Lap</th>
-                            <th className="px-6 py-3 font-bold">Time</th>
-                            <th className="px-6 py-3 font-bold">Distance</th>
-                            <th className="px-6 py-3 font-bold">Avg HR</th>
-                            <th className="px-6 py-3 font-bold">Avg Pace</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {activity.laps.map((lap, i) => (
-                            <tr key={i} className="hover:bg-gray-50 transition-colors">
-                              <td className="px-6 py-4 font-medium text-gray-900">{i + 1}</td>
-                              <td className="px-6 py-4 text-gray-600">
-                                {lap.total_timer_time ? formatDuration(lap.total_timer_time) : "00:00"}
-                              </td>
-                              <td className="px-6 py-4 text-gray-600">
-                                {lap.total_distance ? (lap.total_distance / 1000).toFixed(2) : "0.00"} km
-                              </td>
-                              <td className="px-6 py-4 text-gray-600">{lap.avg_heart_rate || "--"}</td>
-                              <td className="px-6 py-4 text-gray-600">
-                                {(() => {
-                                  const hasTD = typeof lap.total_timer_time === "number" && typeof lap.total_distance === "number" && lap.total_distance > 0;
-                                  const dec = hasTD
-                                    ? (lap.total_timer_time / 60) / (lap.total_distance / 1000)
-                                    : (typeof lap.avg_speed === "number" && lap.avg_speed > 0 ? 1000 / (lap.avg_speed * 60) : null);
-                                  return dec !== null ? `${formatPace(dec)}/km` : "--:--";
-                                })()}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex justify-center pt-8">
-                  <button
-                    onClick={() => setActivity(null)}
-                    className="text-sm text-gray-500 hover:text-red-600 underline underline-offset-4 decoration-gray-300 hover:decoration-red-300 transition-colors"
-                  >
-                    Upload different file
-                  </button>
                 </div>
+              )}
+
+              {/* Laps Table */}
+              {activity.laps && activity.laps.length > 0 && (
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="p-4 border-b border-gray-100 bg-gray-50">
+                    <h2 className="font-semibold text-gray-700">
+                      Laps Summary
+                    </h2>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="text-gray-400 uppercase text-[10px] tracking-wider border-b border-gray-100">
+                          <th className="px-6 py-3 font-bold">Lap</th>
+                          <th className="px-6 py-3 font-bold">Time</th>
+                          <th className="px-6 py-3 font-bold">Distance</th>
+                          <th className="px-6 py-3 font-bold">Avg HR</th>
+                          <th className="px-6 py-3 font-bold">Avg Pace</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {activity.laps.map((lap, i) => (
+                          <tr
+                            key={i}
+                            className="hover:bg-gray-50 transition-colors"
+                          >
+                            <td className="px-6 py-4 font-medium text-gray-900">
+                              {i + 1}
+                            </td>
+                            <td className="px-6 py-4 text-gray-600">
+                              {lap.total_timer_time
+                                ? formatDuration(lap.total_timer_time)
+                                : "00:00"}
+                            </td>
+                            <td className="px-6 py-4 text-gray-600">
+                              {lap.total_distance
+                                ? (lap.total_distance / 1000).toFixed(2)
+                                : "0.00"}{" "}
+                              km
+                            </td>
+                            <td className="px-6 py-4 text-gray-600">
+                              {lap.avg_heart_rate || "--"}
+                            </td>
+                            <td className="px-6 py-4 text-gray-600">
+                              {(() => {
+                                const hasTD =
+                                  typeof lap.total_timer_time === "number" &&
+                                  typeof lap.total_distance === "number" &&
+                                  lap.total_distance > 0;
+                                const dec = hasTD
+                                  ? lap.total_timer_time /
+                                    60 /
+                                    (lap.total_distance / 1000)
+                                  : typeof lap.avg_speed === "number" &&
+                                      lap.avg_speed > 0
+                                    ? 1000 / (lap.avg_speed * 60)
+                                    : null;
+                                return dec !== null
+                                  ? `${formatPace(dec)}/km`
+                                  : "--:--";
+                              })()}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-center pt-8">
+                <button
+                  onClick={() => setActivity(null)}
+                  className="text-sm text-gray-500 hover:text-red-600 underline underline-offset-4 decoration-gray-300 hover:decoration-red-300 transition-colors"
+                >
+                  Upload different file
+                </button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
-    );
+    </div>
+  );
 }

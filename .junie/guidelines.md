@@ -1,66 +1,57 @@
 # VeloGraph Project Guidelines
 
-You are an expert in Python, FastAPI, SQLAlchemy, and scalable web application development.
-You write secure, maintainable, and performant code following modern Python and FastAPI best practices.
+You are an expert in TypeScript, React, Next.js, and data visualization.
+You write secure, maintainable, and performant code following modern web development best practices.
 
-## Python Best Practices
-- Follow PEP 8 with a 120-character line limit (as configured in `ruff.toml`).
-- Use `ruff` for linting and formatting; it handles both `flake8` and `isort` rules.
-- Prefer double quotes for strings and docstrings.
-- Use f-strings for string formatting.
-- Always use type hints for function signatures and variable declarations (Python 3.14+).
-- **Target Version**: Python 3.13+ (Use 3.14 features only if explicitly requested).
-- **Docstrings**: Use Google-style docstrings for non-trivial functions.
+## TypeScript Best Practices
+- Follow standard TypeScript best practices with a 120-character line limit.
+- Prefer double quotes for strings.
+- Use template literals for string interpolation.
+- Always use explicit type hints for function signatures, variable declarations, and API responses.
+- Use `interface` for defining object structures and `type` for unions or aliases.
+- Use `async` functions for all asynchronous operations.
 
-## FastAPI Best Practices
-- Use `Annotated` for dependency injection (e.g., `db: Annotated[AsyncSession, Depends(get_async_db)]`).
-- Always define `response_model` in route decorators to ensure data validation and documentation.
-- Use `async def` for route handlers to leverage asynchronous I/O.
-- Handle exceptions gracefully with `HTTPException` or custom exception handlers.
-- Use `APIRouter` to modularize API routes into logical groups.
+## Next.js Best Practices (App Router)
+- Use the App Router architecture (`src/app`).
+- Prefer Server Components for data fetching and heavy logic; use `"use client"` only when client-side interactivity is required.
+- Use Next.js Route Handlers for API endpoints in `src/app/api`.
+- Use `next/link` for navigation and `next/image` for optimized image rendering.
+- Handle exceptions gracefully and return appropriate `NextResponse` statuses.
 
-## Models (SQLAlchemy)
-- Use modern SQLAlchemy 2.0 style with `Mapped` and `mapped_column`.
-- Define `__tablename__` for all ORM models.
-- Use `relationship` with `back_populates` for bidirectional relationships.
-- Use `UniqueConstraint` for composite unique keys when needed.
-- Prefer `selectinload` for prefetching collections and `joinedload` for many-to-one relationships to avoid N+1 queries.
-- Use `AsyncSession` for all database interactions.
+## Styling (Tailwind CSS)
+- Use Tailwind CSS 4 for all styling.
+- Use `clsx` and `tailwind-merge` for dynamic and conditional class names.
+- Follow mobile-first responsive design principles.
+- Prefer utility classes over custom CSS.
 
-## Schemas (Pydantic)
-- Use Pydantic v2 features and syntax (`model_validator`, `computed_field`, etc.).
-- Use `ConfigDict(from_attributes=True)` to allow Pydantic models to work with ORM objects.
-- Use `Field(default_factory=list)` for list fields to avoid issues with mutable default arguments.
-- Use `model_validator(mode="after")` for complex field derivations or cross-field validation.
-- Keep schemas in `api/schemas.py` and reuse them across routes and scripts.
+## Data Visualization (Plotly.js)
+- Use `react-plotly.js` for complex scientific visualizations (e.g., Wasserman plots).
+- Use `useMemo` to prevent expensive re-calculations of chart data and layouts.
+- Ensure charts are responsive and adapt to container sizes using `useResizeHandler`.
 
-## Database & Migrations
-- Use Alembic for all database schema changes.
-- Never modify the database schema manually; always generate a new migration.
-- Add indexes to frequently queried columns (e.g., `brand_name`, `stack_mm`) in the model definition.
-- Optimize database queries by selecting only required fields when possible.
+## FIT Data Processing
+- **Library**: Use `@garmin/fit-javascript-sdk` to parse binary FIT data.
+- **Reliability**: Prefer the official SDK over custom binary parsing to ensure compatibility with all FIT profiles and message types.
+- **Implementation**:
+  - Extract and process `Record`, `Lap`, and `Session` messages for full activity analysis.
+  - Apply proper scale and offset to raw values according to the FIT profile.
+  - Convert FIT timestamps (seconds since 1989-12-31 00:00:00 UTC) to standard ISO dates.
 
-## Search (Elasticsearch)
-- Use the asynchronous Elasticsearch client (`AsyncElasticsearch`).
-- Keep Elasticsearch indices in sync with the database; implement sync logic in route handlers or background tasks.
-- Use Painless scripts for complex search scoring or distance calculations.
-- Always handle potential Elasticsearch connection issues or errors gracefully.
-
-## Settings
-- Use `pydantic-settings` to manage configuration via environment variables.
-- Group related settings into a single `config.py` file or similar.
-- Never commit secrets to version control; use `.env` files for local development.
-
-## Scripts & Crawling
-- Use `playwright` for dynamic content and `selectolax` for fast HTML parsing.
-- Modularize scripts into `crawlers` (fetching data) and `extractors` (parsing data).
-- Use `loguru` for logging in scripts to provide better visibility during long-running tasks.
-- Implement proper error handling and retries (e.g., using `tenacity`) for external requests.
+## Lab Data & Excel
+- Use `xlsx` (SheetJS) for extracting data from lab test spreadsheets (CPET results).
+- Implement validation to handle different Excel formats from various metabolic carts.
 
 ## Testing
-- Use `pytest` for all tests.
-- Write asynchronous tests using `pytest-asyncio` and `httpx.AsyncClient`.
-- Ensure new features have both unit tests for core logic and integration tests for API endpoints.
-- Test both positive and negative scenarios (e.g., 404 responses, invalid input).
-- **Data Generation**: Use `polyfactory` to generate test data models; avoid manual dictionary creation for complex Pydantic models.
-- **Isolation**: Ensure `conftest.py` handles the async loop scope correctly (`scope="session"` vs `scope="function"`).
+- Use `vitest` for unit and integration tests.
+- Maintain high test coverage for core data processing logic (e.g., threshold calculations).
+- Test edge cases, including malformed files and missing telemetry fields.
+
+## File Structure
+- `src/app`: Application routes, layouts, and API handlers.
+- `src/components`: Reusable UI components.
+- `src/lib`: Core logic, data parsers, and utility functions.
+- `public`: Static assets.
+
+## Environment & Configuration
+- Use `.env` for managing configuration via environment variables.
+- Never commit secrets or sensitive information to version control.
