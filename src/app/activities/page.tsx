@@ -32,6 +32,7 @@ export default function ActivitiesPage() {
     overlayElevationOnSpeed: true,
     xAxisType: "time",
   });
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
     if (activity) {
@@ -44,6 +45,10 @@ export default function ActivitiesPage() {
       }));
     }
   }, [activity]);
+
+  useEffect(() => {
+    setRevision((r) => r + 1);
+  }, [settings, activity]);
 
   const reset = () => setActivity(null);
 
@@ -298,12 +303,14 @@ export default function ActivitiesPage() {
             title={charts.heartRate.layout.title.text}
             data={charts.heartRate.data}
             layout={charts.heartRate.layout}
+            revision={revision}
           />
 
           <ActivityChart
             title={charts.paceSpeed.layout.title.text}
             data={charts.paceSpeed.data}
             layout={charts.paceSpeed.layout}
+            revision={revision}
           />
 
           {hasPower && (
@@ -311,6 +318,7 @@ export default function ActivitiesPage() {
               title="Power"
               data={charts.power.data}
               layout={charts.power.layout}
+              revision={revision}
             />
           )}
 
@@ -318,6 +326,7 @@ export default function ActivitiesPage() {
             title="Elevation"
             data={charts.altitude.data}
             layout={charts.altitude.layout}
+            revision={revision}
           />
 
           {hasCadence && (
@@ -325,6 +334,7 @@ export default function ActivitiesPage() {
               title="Cadence"
               data={charts.cadence.data}
               layout={charts.cadence.layout}
+              revision={revision}
             />
           )}
         </div>

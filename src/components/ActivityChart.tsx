@@ -17,6 +17,7 @@ interface ActivityChartProps {
   data: any[];
   layout?: any;
   height?: number;
+  revision?: number;
 }
 
 export function ActivityChart({
@@ -24,6 +25,7 @@ export function ActivityChart({
   data,
   layout: customLayout,
   height = 300,
+  revision,
 }: ActivityChartProps) {
   const mergedLayout = useMemo(() => {
     const baseLayout: any = {
@@ -50,10 +52,11 @@ export function ActivityChart({
         gridcolor: "#f3f4f6",
         linecolor: "#d1d5db",
       },
+      datarevision: revision,
     };
 
-    return { ...baseLayout, ...customLayout };
-  }, [height, customLayout]);
+    return { ...baseLayout, ...customLayout, datarevision: revision };
+  }, [height, customLayout, revision]);
 
   return (
     <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
@@ -61,6 +64,7 @@ export function ActivityChart({
       <Plot
         data={data}
         layout={mergedLayout}
+        revision={revision}
         config={{
           responsive: true,
           displayModeBar: false,
