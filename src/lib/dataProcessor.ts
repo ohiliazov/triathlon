@@ -10,6 +10,7 @@ export const VE = "VE_ergo";
 export const VCO2 = "VCO2";
 export const HR = "HR";
 export const SPEED = "Speed";
+export const POWER = "Power";
 export const VT = "VT";
 export const PET_O2 = "PetO2";
 export const PET_CO2 = "PetCO2";
@@ -105,6 +106,7 @@ export const COLUMNS = [
   SP_CO2,
   RQ,
   SPEED,
+  POWER,
   GRADE,
   FAT,
   CHO,
@@ -308,7 +310,7 @@ export function processLabTestExcel(buffer: Buffer) {
   });
 
   // Smoothing with Savitzky-Golay filter for clinical signal preservation
-  const smoothCols = COLUMNS.filter((c) => c !== SPEED && c !== GRADE && c !== TIME && c !== TIME_MINUTES);
+  const smoothCols = COLUMNS.filter((c) => c !== SPEED && c !== POWER && c !== GRADE && c !== TIME && c !== TIME_MINUTES);
 
   // Dynamic frequency detection
   let avgTimeDelta = 1;
@@ -366,11 +368,18 @@ export function processLabTestExcel(buffer: Buffer) {
   // --- Steady State Extraction (Last 30s of each step) ---
   const stepData: any[][] = [];
   if (processedData.length > 0) {
+    // Detect whether we are using Speed or Power for step detection
+    const hasSpeed = processedData.some(d => (d[SPEED] ?? 0) > 0);
+    const hasPower = processedData.some(d => (d[POWER] ?? 0) > 0);
+    const stepKey = hasPower && !hasSpeed ? POWER : SPEED;
+
     let currentStep: any[] = [processedData[0]];
     for (let i = 1; i < processedData.length; i++) {
-      const prevSpeed = processedData[i - 1][SPEED] || 0;
-      const currentSpeed = processedData[i][SPEED] || 0;
-      if (Math.abs(currentSpeed - prevSpeed) > SPEED_CHANGE_THRESHOLD) {
+      const prevVal = processedData[i - 1][stepKey] || 0;
+      const currentVal = processedData[i][stepKey] || 0;
+      // For Power, we use a slightly larger threshold (e.g. 5W) than Speed (0.1 km/h)
+      const threshold = stepKey === POWER ? 5 : SPEED_CHANGE_THRESHOLD;
+      if (Math.abs(currentVal - prevVal) > threshold) {
         stepData.push(currentStep);
         currentStep = [];
       }
@@ -389,8 +398,8 @@ export function processLabTestExcel(buffer: Buffer) {
 
       const averagedPoint: any = { ...windowPoints[windowPoints.length - 1] };
       COLUMNS.forEach((col) => {
-        // Don't average time, speed, grade
-        if (col === TIME || col === TIME_MINUTES || col === SPEED || col === GRADE) return;
+        // Don't average time, speed, power, grade
+        if (col === TIME || col === TIME_MINUTES || col === SPEED || col === POWER || col === GRADE) return;
         const values = windowPoints.map((p) => p[col]).filter((v) => v !== null && v !== undefined);
         if (values.length > 0) {
           averagedPoint[col] = values.reduce((a, b) => a + b, 0) / values.length;
@@ -540,6 +549,7 @@ export function processLabTestExcel(buffer: Buffer) {
   // Consensus AT: Average available markers
   let calculated_at_min = null;
   const atMarkers = [vslope_at_min, ve_vo2_nadir].filter(m => m !== null) as number[];
+  console.log(`AT Markers: vslope_at_min=${vslope_at_min}, ve_vo2_nadir=${ve_vo2_nadir}`);
   if (atMarkers.length > 0) {
     calculated_at_min = atMarkers.reduce((a, b) => a + b, 0) / atMarkers.length;
   }
@@ -548,6 +558,7 @@ export function processLabTestExcel(buffer: Buffer) {
 
   // RC markers typically occur at higher intensity (RQ >= 0.98 or well after AT)
   const rcWarmup = processedData.find(d => d[RQ] !== null && d[RQ] >= RC_WARMUP_RQ_THRESHOLD)?.[TIME_MINUTES] || ((calculated_at_min || 0) + RC_WARMUP_DEFAULT_OFFSET_MINUTES);
+  console.log(`rcWarmup: ${rcWarmup}`);
 
   // A. Ventilatory Equivalent Nadir (VE/VCO2)
   const ve_vco2_nadir = findRobustNadir(VE_VCO2, rcWarmup);
@@ -581,14 +592,39 @@ export function processLabTestExcel(buffer: Buffer) {
   let calculated_rc_min = null;
   const rcMarkers = [ve_vco2_nadir, petco2_peak_min, ve_vco2_break_min].filter(m => m !== null) as number[];
 
+  console.log(`RC Markers: ve_vco2_nadir=${ve_vco2_nadir}, petco2_peak_min=${petco2_peak_min}, ve_vco2_break_min=${ve_vco2_break_min}`);
+
   if (rcMarkers.length > 0) {
     const avgRc = rcMarkers.reduce((a, b) => a + b, 0) / rcMarkers.length;
     const spread = Math.max(...rcMarkers) - Math.min(...rcMarkers);
     if (spread < RC_MAX_SPREAD_MINUTES) { // Within spread limit
       calculated_rc_min = avgRc;
     } else {
-      // If high spread, prioritize markers that occur later (more likely to be RC than early noise)
-      calculated_rc_min = Math.max(...rcMarkers);
+      // High spread: choose the marker closest to the time where RQ ≈ 1.0 (physiological RC vicinity)
+      let rqTargetMin = rcWarmup;
+      let bestDiff = Infinity;
+      for (let i = 0; i < processedData.length; i++) {
+        const tMin = processedData[i][TIME_MINUTES];
+        if (tMin < rcWarmup || tMin > final_max) continue;
+        const rqVal = processedData[i][RQ];
+        if (rqVal == null) continue;
+        const diff = Math.abs(rqVal - 1.0);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          rqTargetMin = tMin;
+        }
+      }
+      // pick rc marker with minimal time distance to rqTargetMin
+      let bestMarker = rcMarkers[0];
+      let bestTimeDiff = Math.abs(rcMarkers[0] - rqTargetMin);
+      for (let i = 1; i < rcMarkers.length; i++) {
+        const d = Math.abs(rcMarkers[i] - rqTargetMin);
+        if (d < bestTimeDiff) {
+          bestTimeDiff = d;
+          bestMarker = rcMarkers[i];
+        }
+      }
+      calculated_rc_min = bestMarker;
     }
   }
 

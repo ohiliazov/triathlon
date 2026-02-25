@@ -72,9 +72,15 @@ const formatTime = (minutes: number): string => {
 /**
  * Calculates a time-based moving average (centered window)
  */
-const calculateMovingAverage = (data: any[], xKey: string, yKey: string, windowSeconds: number): number[] => {
+const calculateMovingAverage = (
+  data: any[],
+  xKey: string,
+  yKey: string,
+  windowSeconds: number,
+): number[] => {
   if (data.length === 0) return [];
-  const halfWindowMinutes = windowSeconds / (SECONDS_PER_MINUTE * HALF_WINDOW_DIVISOR);
+  const halfWindowMinutes =
+    windowSeconds / (SECONDS_PER_MINUTE * HALF_WINDOW_DIVISOR);
   const result: number[] = [];
   let leftIdx = 0;
   let rightIdx = 0;
@@ -164,23 +170,42 @@ interface WassermanChartProps {
   };
 }
 
-export function WassermanChart({data, title, description, config, isSteadyMode, thresholds}: WassermanChartProps) {
+export function WassermanChart({
+  data,
+  title,
+  description,
+  config,
+  isSteadyMode,
+  thresholds,
+}: WassermanChartProps) {
   const [showTooltip, setShowTooltip] = useState(false);
 
   const plotData = useMemo(() => {
     const traces: any[] = [];
-    const isScatterVsScatter = [PANEL_VE_VS_VCO2, PANEL_VSLOPE, PANEL_BREATHING_PATTERN].includes(config.id);
+    const isScatterVsScatter = [
+      PANEL_VE_VS_VCO2,
+      PANEL_VSLOPE,
+      PANEL_BREATHING_PATTERN,
+    ].includes(config.id);
     const isRQ = config.id === PANEL_RQ;
 
     config.traces.forEach((trace: any) => {
-      const color = trace.marker?.color || trace.line?.color || getClinicalColor(trace.name, trace.yKey);
+      const color =
+        trace.marker?.color ||
+        trace.line?.color ||
+        getClinicalColor(trace.name, trace.yKey);
       const isTimeBased = ["minutes", "t"].includes(trace.xKey);
-      const isPercentage = (trace.name || "").includes("%") || (trace.yKey || "").includes("%");
+      const isPercentage =
+        (trace.name || "").includes("%") || (trace.yKey || "").includes("%");
 
       // Map x values if time based for formatting (Plotly date type works best for MM:SS)
       const xData = isTimeBased
-          ? data.map((d) => new Date((d[trace.xKey] || 0) * SECONDS_PER_MINUTE * MS_PER_SECOND).toISOString())
-          : data.map((d) => d[trace.xKey]);
+        ? data.map((d) =>
+            new Date(
+              (d[trace.xKey] || 0) * SECONDS_PER_MINUTE * MS_PER_SECOND,
+            ).toISOString(),
+          )
+        : data.map((d) => d[trace.xKey]);
 
       if (isSteadyMode) {
         // 0. Steady State View: Prominent markers with connecting lines
@@ -227,8 +252,14 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
         });
 
         // 2. Smoothed Trendline Trace
-        const smoothedY = calculateMovingAverage(data, trace.xKey, trace.yKey, TRENDLINE_SMOOTHING_WINDOW_SECONDS);
-        const isPercentage = (trace.name || "").includes("%") || (trace.yKey || "").includes("%");
+        const smoothedY = calculateMovingAverage(
+          data,
+          trace.xKey,
+          trace.yKey,
+          TRENDLINE_SMOOTHING_WINDOW_SECONDS,
+        );
+        const isPercentage =
+          (trace.name || "").includes("%") || (trace.yKey || "").includes("%");
 
         traces.push({
           x: xData,
@@ -249,7 +280,8 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
         });
       } else {
         // Excluded panels (4, 5, 7, 8): Just the main trace
-        const isPercentage = (trace.name || "").includes("%") || (trace.yKey || "").includes("%");
+        const isPercentage =
+          (trace.name || "").includes("%") || (trace.yKey || "").includes("%");
 
         traces.push({
           x: xData,
@@ -278,30 +310,95 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
     if (config.id === PANEL_VE_VS_VCO2 && thresholds?.rc) {
       const rcTime = thresholds.rc;
       const regressionData = data.filter((d) => d.minutes <= rcTime);
-      const result = calculateLinearRegression(regressionData, "VCO2", "VE_ergo");
+      const result = calculateLinearRegression(
+        regressionData,
+        "VCO2",
+        "VE_ergo",
+      );
       if (result) {
         traces.push({
           x: [result.xMin, result.xMax],
-          y: [result.m * result.xMin + result.b, result.m * result.xMax + result.b],
+          y: [
+            result.m * result.xMin + result.b,
+            result.m * result.xMax + result.b,
+          ],
           mode: "lines",
           name: `Slope: ${result.m.toFixed(2)}`,
-          line: {color: "#003300", width: REGRESSION_LINE_WIDTH, dash: "dot"},
+          line: { color: "#003300", width: REGRESSION_LINE_WIDTH, dash: "dot" },
           type: "scatter",
         });
       }
     }
 
-    // Special case: Diagonal reference line for Panel 5 (V-Slope)
+    // Special case: Diagonal reference line and V-Slope Piecewise for Panel 5 (V-Slope)
     if (config.id === PANEL_VSLOPE) {
+      const xMin = Math.min(...data.map((d) => d.VO2 || 0));
       const xMax = Math.max(...data.map((d) => d.VO2 || 0));
+
+      // 1. Reference Line (Slope 1.0) - Start from xMin instead of 0
       traces.push({
-        x: [0, xMax],
-        y: [0, xMax],
+        x: [xMin, xMax],
+        y: [xMin, xMax],
         mode: "lines",
         name: "Slope 1.0",
-        line: {color: "#374151", width: REFERENCE_LINE_WIDTH, dash: "dash"},
+        line: { color: "#374151", width: REFERENCE_LINE_WIDTH, dash: "dash" },
         type: "scatter",
       });
+
+      // 2. Piecewise V-Slope Regression
+      if (thresholds) {
+        const atTime = thresholds.calculatedAt || thresholds.at;
+        const atPoint = data.find((d) => d.minutes >= atTime) || data[0];
+        const atVO2 = atPoint.VO2 || 0;
+
+        const leftData = data.filter(
+          (d) => d.VO2 <= atVO2 && d.minutes <= atTime,
+        );
+        const rightData = data.filter(
+          (d) =>
+            d.VO2 >= atVO2 &&
+            d.minutes >= atTime &&
+            d.minutes <= (thresholds.max || 999),
+        );
+
+        const leftReg = calculateLinearRegression(leftData, "VO2", "VCO2");
+        const rightReg = calculateLinearRegression(rightData, "VO2", "VCO2");
+
+        if (leftReg) {
+          traces.push({
+            x: [leftReg.xMin, atVO2],
+            y: [
+              leftReg.m * leftReg.xMin + leftReg.b,
+              leftReg.m * atVO2 + leftReg.b,
+            ],
+            mode: "lines",
+            name: "V-Slope (Pre-AT)",
+            line: {
+              color: "#0053a4",
+              width: REGRESSION_LINE_WIDTH,
+              dash: "dot",
+            },
+            type: "scatter",
+          });
+        }
+        if (rightReg) {
+          traces.push({
+            x: [atVO2, rightReg.xMax],
+            y: [
+              rightReg.m * atVO2 + rightReg.b,
+              rightReg.m * rightReg.xMax + rightReg.b,
+            ],
+            mode: "lines",
+            name: "V-Slope (Post-AT)",
+            line: {
+              color: "#c00000",
+              width: REGRESSION_LINE_WIDTH,
+              dash: "dot",
+            },
+            type: "scatter",
+          });
+        }
+      }
     }
 
     // Special case: Horizontal reference lines for Panel 8 (RQ)
@@ -312,8 +409,15 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
       const xMaxVal = Math.max(...data.map((d) => d[firstTrace.xKey] || 0));
 
       const xRange = isTimeBased
-          ? [new Date(xMinVal * SECONDS_PER_MINUTE * MS_PER_SECOND).toISOString(), new Date(xMaxVal * SECONDS_PER_MINUTE * MS_PER_SECOND).toISOString()]
-          : [xMinVal, xMaxVal];
+        ? [
+            new Date(
+              xMinVal * SECONDS_PER_MINUTE * MS_PER_SECOND,
+            ).toISOString(),
+            new Date(
+              xMaxVal * SECONDS_PER_MINUTE * MS_PER_SECOND,
+            ).toISOString(),
+          ]
+        : [xMinVal, xMaxVal];
 
       [1.0, 1.1].forEach((val) => {
         traces.push({
@@ -321,7 +425,11 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
           y: [val, val],
           mode: "lines",
           name: `RQ ${val.toFixed(2)}`,
-          line: {color: "#c00000", width: val === 1.0 ? RQ_MAIN_LINE_WIDTH : RQ_SECONDARY_LINE_WIDTH, dash: val === 1.0 ? "dash" : "dot"},
+          line: {
+            color: "#c00000",
+            width: val === 1.0 ? RQ_MAIN_LINE_WIDTH : RQ_SECONDARY_LINE_WIDTH,
+            dash: val === 1.0 ? "dash" : "dot",
+          },
           showlegend: false,
           type: "scatter",
           hoverinfo: "skip",
@@ -339,11 +447,23 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
     // Normalize axis titles coming from external config to Plotly's expected object form
     const rawLayout = (config as any).layout || {};
     const normalizedConfigLayout: any = { ...rawLayout };
-    if (normalizedConfigLayout.xaxis && typeof normalizedConfigLayout.xaxis.title === "string") {
-      normalizedConfigLayout.xaxis = { ...normalizedConfigLayout.xaxis, title: { text: normalizedConfigLayout.xaxis.title } };
+    if (
+      normalizedConfigLayout.xaxis &&
+      typeof normalizedConfigLayout.xaxis.title === "string"
+    ) {
+      normalizedConfigLayout.xaxis = {
+        ...normalizedConfigLayout.xaxis,
+        title: { text: normalizedConfigLayout.xaxis.title },
+      };
     }
-    if (normalizedConfigLayout.yaxis && typeof normalizedConfigLayout.yaxis.title === "string") {
-      normalizedConfigLayout.yaxis = { ...normalizedConfigLayout.yaxis, title: { text: normalizedConfigLayout.yaxis.title } };
+    if (
+      normalizedConfigLayout.yaxis &&
+      typeof normalizedConfigLayout.yaxis.title === "string"
+    ) {
+      normalizedConfigLayout.yaxis = {
+        ...normalizedConfigLayout.yaxis,
+        title: { text: normalizedConfigLayout.yaxis.title },
+      };
     }
 
     const xKey = config.traces[0]?.xKey || "minutes";
@@ -351,24 +471,46 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
 
     const getXValue = (timeMin: number) => {
       if (xKey === "minutes") {
-        return isTimeBased ? new Date(timeMin * SECONDS_PER_MINUTE * MS_PER_SECOND).toISOString() : timeMin;
+        return isTimeBased
+          ? new Date(timeMin * SECONDS_PER_MINUTE * MS_PER_SECOND).toISOString()
+          : timeMin;
       }
       const row = data.reduce((prev, curr) => {
-        return Math.abs(curr.minutes - timeMin) < Math.abs(prev.minutes - timeMin) ? curr : prev;
+        return Math.abs(curr.minutes - timeMin) <
+          Math.abs(prev.minutes - timeMin)
+          ? curr
+          : prev;
       });
       if (!row) return null;
-      return isTimeBased ? new Date(row[xKey] * SECONDS_PER_MINUTE * MS_PER_SECOND).toISOString() : row[xKey];
+      return isTimeBased
+        ? new Date(row[xKey] * SECONDS_PER_MINUTE * MS_PER_SECOND).toISOString()
+        : row[xKey];
     };
 
     if (thresholds) {
       const markers = [
-        {val: thresholds.at, label: "AT", color: "#10b981"},
-        {val: thresholds.rc, label: "RC", color: "#f97316"},
-        {val: thresholds.max, label: "Max", color: "#dc2626"},
-        {val: thresholds.fatMax, label: "FatMax", color: "#3b82f6"},
-        {val: thresholds.calculatedAt, label: "calc AT", color: "#10b981", dash: "dot"},
-        {val: thresholds.calculatedRc, label: "calc RC", color: "#f97316", dash: "dot"},
-        {val: thresholds.calculatedMax, label: "calc Max", color: "#dc2626", dash: "dot"},
+        { val: thresholds.at, label: "AT", color: "#10b981" },
+        { val: thresholds.rc, label: "RC", color: "#f97316" },
+        { val: thresholds.max, label: "Max", color: "#dc2626" },
+        { val: thresholds.fatMax, label: "FatMax", color: "#3b82f6" },
+        {
+          val: thresholds.calculatedAt,
+          label: "calc AT",
+          color: "#10b981",
+          dash: "dot",
+        },
+        {
+          val: thresholds.calculatedRc,
+          label: "calc RC",
+          color: "#f97316",
+          dash: "dot",
+        },
+        {
+          val: thresholds.calculatedMax,
+          label: "calc Max",
+          color: "#dc2626",
+          dash: "dot",
+        },
       ];
 
       markers.forEach((m) => {
@@ -383,7 +525,11 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
           y0: 0,
           y1: 1,
           yref: "paper",
-          line: {color: m.color, width: THRESHOLD_MARKER_WIDTH, dash: (m as any).dash || "dash"},
+          line: {
+            color: m.color,
+            width: THRESHOLD_MARKER_WIDTH,
+            dash: (m as any).dash || "dash",
+          },
         });
 
         annotations.push({
@@ -393,9 +539,12 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
           text: m.label,
           showarrow: false,
           xanchor: "center",
-          font: {size: THRESHOLD_LABEL_SIZE, color: m.color, weight: "bold"},
+          font: { size: THRESHOLD_LABEL_SIZE, color: m.color, weight: "bold" },
           bgcolor: "rgba(255, 255, 255, 0.8)",
-          yshift: (m as any).dash === "dot" ? -THRESHOLD_ANNOTATION_Y_OFFSET : THRESHOLD_ANNOTATION_Y_OFFSET,
+          yshift:
+            (m as any).dash === "dot"
+              ? -THRESHOLD_ANNOTATION_Y_OFFSET
+              : THRESHOLD_ANNOTATION_Y_OFFSET,
         });
       });
     }
@@ -403,7 +552,12 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
     const baseLayout = {
       autosize: true,
       height: CHART_HEIGHT,
-      margin: {l: CHART_MARGIN_L, r: CHART_MARGIN_R, t: CHART_MARGIN_T, b: CHART_MARGIN_B},
+      margin: {
+        l: CHART_MARGIN_L,
+        r: CHART_MARGIN_R,
+        t: CHART_MARGIN_T,
+        b: CHART_MARGIN_B,
+      },
       showlegend: true,
       legend: {
         orientation: "h" as const,
@@ -414,10 +568,10 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
         bgcolor: "rgba(255, 255, 255, 0.7)",
         bordercolor: "#e5e7eb",
         borderwidth: 1,
-        font: {size: LEGEND_FONT_SIZE},
+        font: { size: LEGEND_FONT_SIZE },
       },
       hovermode: "x unified" as const,
-      hoverlabel: {bgcolor: "rgba(255, 255, 255, 0.9)"},
+      hoverlabel: { bgcolor: "rgba(255, 255, 255, 0.9)" },
       plot_bgcolor: "white",
       paper_bgcolor: "white",
       xaxis: {
@@ -450,26 +604,39 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
 
     // Special handling for dual axes and custom shapes/annotations
     const additionalLayout: Record<string, any> = Object.fromEntries(
-        Object.entries(normalizedConfigLayout || {}).filter(
-            ([key]) => !["xaxis", "yaxis", "shapes", "annotations"].includes(key)
-        )
+      Object.entries(normalizedConfigLayout || {}).filter(
+        ([key]) => !["xaxis", "yaxis", "shapes", "annotations"].includes(key),
+      ),
     );
 
     // Transform external shapes/annotations to ISO dates if necessary
-    const externalShapes = (normalizedConfigLayout?.shapes || []).map((s: any) => {
-      if (!isTimeBased) return s;
-      const newS = {...s};
-      if (typeof s.x0 === "number") newS.x0 = new Date(s.x0 * SECONDS_PER_MINUTE * MS_PER_SECOND).toISOString();
-      if (typeof s.x1 === "number") newS.x1 = new Date(s.x1 * SECONDS_PER_MINUTE * MS_PER_SECOND).toISOString();
-      return newS;
-    });
+    const externalShapes = (normalizedConfigLayout?.shapes || []).map(
+      (s: any) => {
+        if (!isTimeBased) return s;
+        const newS = { ...s };
+        if (typeof s.x0 === "number")
+          newS.x0 = new Date(
+            s.x0 * SECONDS_PER_MINUTE * MS_PER_SECOND,
+          ).toISOString();
+        if (typeof s.x1 === "number")
+          newS.x1 = new Date(
+            s.x1 * SECONDS_PER_MINUTE * MS_PER_SECOND,
+          ).toISOString();
+        return newS;
+      },
+    );
 
-    const externalAnnotations = (normalizedConfigLayout?.annotations || []).map((a: any) => {
-      if (!isTimeBased) return a;
-      const newA = {...a};
-      if (typeof a.x === "number") newA.x = new Date(a.x * SECONDS_PER_MINUTE * MS_PER_SECOND).toISOString();
-      return newA;
-    });
+    const externalAnnotations = (normalizedConfigLayout?.annotations || []).map(
+      (a: any) => {
+        if (!isTimeBased) return a;
+        const newA = { ...a };
+        if (typeof a.x === "number")
+          newA.x = new Date(
+            a.x * SECONDS_PER_MINUTE * MS_PER_SECOND,
+          ).toISOString();
+        return newA;
+      },
+    );
 
     // Apply dual/multi-axis cleanup and normalize title strings to objects
     Object.keys(additionalLayout).forEach((key) => {
@@ -516,45 +683,44 @@ export function WassermanChart({data, title, description, config, isSteadyMode, 
   }, [title, config, thresholds, data]);
 
   return (
-      <div
-          className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-3 transition-all hover:shadow-md relative group">
-        <div className="flex items-center justify-between mb-2 px-1">
-          <h3 className="text-sm font-semibold text-gray-900 truncate pr-6" title={title}>
-            {title}
-          </h3>
-          {description && (
-              <div className="relative">
-                <button
-                    onMouseEnter={() => setShowTooltip(true)}
-                    onMouseLeave={() => setShowTooltip(false)}
-                    className="text-gray-400 hover:text-blue-500 transition-colors"
-                >
-                  <Info className="w-4 h-4"/>
-                </button>
-                {showTooltip && (
-                    <div
-                        className="absolute right-0 bottom-full mb-2 w-64 p-3 bg-gray-900 text-white text-[11px] rounded-lg shadow-xl z-50">
-                      <div className="font-bold mb-1 border-b border-gray-700 pb-1 text-blue-400 uppercase tracking-wider">Physiological Insight
-                      </div>
-                      <div className="leading-relaxed opacity-90">
-                        {description}
-                      </div>
-                      <div
-                          className="absolute right-2 top-full w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-gray-900"></div>
-                    </div>
-                )}
+    <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-3 transition-all hover:shadow-md relative group">
+      <div className="flex items-center justify-between mb-2 px-1">
+        <h3
+          className="text-sm font-semibold text-gray-900 truncate pr-6"
+          title={title}
+        >
+          {title}
+        </h3>
+        {description && (
+          <div className="relative">
+            <button
+              onMouseEnter={() => setShowTooltip(true)}
+              onMouseLeave={() => setShowTooltip(false)}
+              className="text-gray-400 hover:text-blue-500 transition-colors"
+            >
+              <Info className="w-4 h-4" />
+            </button>
+            {showTooltip && (
+              <div className="absolute right-0 bottom-full mb-2 w-64 p-3 bg-gray-900 text-white text-[11px] rounded-lg shadow-xl z-50">
+                <div className="font-bold mb-1 border-b border-gray-700 pb-1 text-blue-400 uppercase tracking-wider">
+                  Physiological Insight
+                </div>
+                <div className="leading-relaxed opacity-90">{description}</div>
+                <div className="absolute right-2 top-full w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-gray-900"></div>
               </div>
-          )}
-        </div>
-        <Plot
-            data={plotData}
-            layout={layout}
-            config={{
-              responsive: true,
-              displayModeBar: false,
-            }}
-            className="w-full"
-        />
+            )}
+          </div>
+        )}
       </div>
+      <Plot
+        data={plotData}
+        layout={layout}
+        config={{
+          responsive: true,
+          displayModeBar: false,
+        }}
+        className="w-full"
+      />
+    </div>
   );
 }

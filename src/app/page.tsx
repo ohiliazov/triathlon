@@ -17,6 +17,8 @@ import {
 const TIME_DELTA_TOLERANCE_MINUTES = 0.5;
 const HEART_RATE_DELTA_TOLERANCE_BPM = 5;
 const VO2_DELTA_TOLERANCE_ML = 50; // Added as a likely standard
+const POWER_DELTA_TOLERANCE_W = 10;
+const SPEED_DELTA_TOLERANCE_KMH = 0.5;
 const TIME_DELTA_TOLERANCE_SECONDS = 30;
 
 export default function Home() {
@@ -34,7 +36,12 @@ export default function Home() {
     fatMaxZoneStartHr?: number | null;
     fatMaxZoneEndHr?: number | null;
   } | null>(null);
-  const [xAxisMode, setXAxisMode] = useState<"minutes" | "Speed">("minutes");
+  const [xAxisMode, setXAxisMode] = useState<"minutes" | "Speed" | "Power">(
+    "minutes",
+  );
+  const [availableIntensity, setAvailableIntensity] = useState<
+    "Speed" | "Power"
+  >("Speed");
   const [isSteadyMode, setIsSteadyMode] = useState(false);
   const [activeTab, setActiveTab] = useState<
     "wasserman" | "supplementary" | "respiratory" | "analysis"
@@ -44,6 +51,21 @@ export default function Home() {
     setData(payload.data);
     setSteadyData(payload.steadyStateData);
     setThresholds(payload.thresholds);
+
+    const hasSpeed = payload.data.some((d: any) => (d.Speed ?? 0) > 0);
+    const hasPower = payload.data.some((d: any) => (d.Power ?? 0) > 0);
+
+    if (hasPower && !hasSpeed) {
+      setAvailableIntensity("Power");
+      if (xAxisMode === "Speed") {
+        setXAxisMode("Power");
+      }
+    } else {
+      setAvailableIntensity("Speed");
+      if (xAxisMode === "Power") {
+        setXAxisMode("Speed");
+      }
+    }
   };
 
   const displayData = useMemo(() => {
@@ -88,9 +110,11 @@ export default function Home() {
   }, [data, thresholds]);
 
   const wassermanPanels = useMemo(() => {
-    if (!data) return [];
+    if (!data || !thresholds) return [];
 
-    const xLabel = xAxisMode === "minutes" ? "Time (min)" : "Speed (km/h)";
+    const intensityLabel =
+      availableIntensity === "Power" ? "Power (W)" : "Speed (km/h)";
+    const xLabel = xAxisMode === "minutes" ? "Time (min)" : intensityLabel;
 
     return [
       {
@@ -231,11 +255,17 @@ export default function Home() {
             },
           ],
           layout: {
-            xaxis: { title: "VO2 (mL/min)" },
+            xaxis: {
+              title: "VO2 (mL/min)",
+              autorange: true,
+              rangemode: "normal",
+            },
             yaxis: {
               title: "VCO2 (mL/min)",
               titlefont: { color: "#0053a4" },
               tickfont: { color: "#0053a4" },
+              autorange: true,
+              rangemode: "normal",
             },
             yaxis2: {
               title: "HR (bpm)",
@@ -244,6 +274,8 @@ export default function Home() {
               overlaying: "y",
               side: "right",
               showgrid: false,
+              autorange: true,
+              rangemode: "normal",
             },
           },
         },
@@ -367,12 +399,14 @@ export default function Home() {
         },
       },
     ];
-  }, [data, xAxisMode]);
+  }, [data, xAxisMode, availableIntensity, thresholds]);
 
   const supplementaryPanels = useMemo(() => {
     if (!data || !thresholds) return [];
 
-    const xLabel = xAxisMode === "minutes" ? "Time (min)" : "Speed (km/h)";
+    const intensityLabel =
+      availableIntensity === "Power" ? "Power (W)" : "Speed (km/h)";
+    const xLabel = xAxisMode === "minutes" ? "Time (min)" : intensityLabel;
 
     // Find FatMax from thresholds
     const getXFromTime = (time: number | undefined | null) => {
@@ -649,12 +683,14 @@ export default function Home() {
         },
       },
     ];
-  }, [data, xAxisMode, currentLT1]);
+  }, [data, xAxisMode, availableIntensity, currentLT1, thresholds]);
 
   const respiratoryPanels = useMemo(() => {
     if (!data) return [];
 
-    const xLabel = xAxisMode === "minutes" ? "Time (min)" : "Speed (km/h)";
+    const intensityLabel =
+      availableIntensity === "Power" ? "Power (W)" : "Speed (km/h)";
+    const xLabel = xAxisMode === "minutes" ? "Time (min)" : intensityLabel;
 
     return [
       {
@@ -753,7 +789,7 @@ export default function Home() {
         },
       },
     ];
-  }, [data, xAxisMode]);
+  }, [data, xAxisMode, availableIntensity]);
 
   const activePanels = useMemo(() => {
     if (activeTab === "wasserman") return wassermanPanels;
@@ -780,7 +816,11 @@ export default function Home() {
           ? TIME_DELTA_TOLERANCE_MINUTES
           : unit === "bpm"
             ? HEART_RATE_DELTA_TOLERANCE_BPM
-            : VO2_DELTA_TOLERANCE_ML;
+            : unit === "W"
+              ? POWER_DELTA_TOLERANCE_W
+              : unit === "km/h"
+                ? SPEED_DELTA_TOLERANCE_KMH
+                : VO2_DELTA_TOLERANCE_ML;
       const color =
         Math.abs(val) < tolerance ? "text-green-600" : "text-orange-600";
       return (
@@ -813,18 +853,27 @@ export default function Home() {
       time: thresholds.at - (thresholds.calculatedAt || 0),
       hr: (currentLT1.HR || 0) - (calcLT1.HR || 0),
       vo2: (currentLT1.VO2 || 0) - (calcLT1.VO2 || 0),
+      intensity:
+        (currentLT1[availableIntensity] || 0) -
+        (calcLT1[availableIntensity] || 0),
     };
 
     const rcDelta = {
       time: thresholds.rc - (thresholds.calculatedRc || 0),
       hr: (currentLT2.HR || 0) - (calcLT2.HR || 0),
       vo2: (currentLT2.VO2 || 0) - (calcLT2.VO2 || 0),
+      intensity:
+        (currentLT2[availableIntensity] || 0) -
+        (calcLT2[availableIntensity] || 0),
     };
 
     const maxDelta = {
       time: thresholds.max - (thresholds.calculatedMax || thresholds.max),
       hr: (currentMax.HR || 0) - (calcMax?.HR || currentMax.HR || 0),
       vo2: (currentMax.VO2 || 0) - (calcMax?.VO2 || currentMax.VO2 || 0),
+      intensity:
+        (currentMax[availableIntensity] || 0) -
+        (calcMax?.[availableIntensity] || currentMax[availableIntensity] || 0),
     };
 
     return (
@@ -895,6 +944,30 @@ export default function Home() {
                       </td>
                     </tr>
                     <tr>
+                      <td className="px-4 py-3 font-medium">
+                        {availableIntensity}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {availableIntensity === "Power"
+                          ? currentLT1.Power?.toFixed(0)
+                          : currentLT1.Speed?.toFixed(1)}
+                        {availableIntensity === "Power" ? " W" : " km/h"}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {availableIntensity === "Power"
+                          ? calcLT1.Power?.toFixed(0)
+                          : calcLT1.Speed?.toFixed(1)}
+                        {availableIntensity === "Power" ? " W" : " km/h"}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold">
+                        {formatDelta(
+                          atDelta.intensity,
+                          availableIntensity === "Power" ? "W" : "km/h",
+                          availableIntensity === "Power" ? 0 : 1,
+                        )}
+                      </td>
+                    </tr>
+                    <tr>
                       <td className="px-4 py-3 font-medium">VO2 (ml/min)</td>
                       <td className="px-4 py-3 text-right">
                         {currentLT1.VO2?.toFixed(0)}
@@ -957,6 +1030,30 @@ export default function Home() {
                       </td>
                       <td className="px-4 py-3 text-right font-bold">
                         {formatDelta(rcDelta.hr, "bpm")}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-3 font-medium">
+                        {availableIntensity}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {availableIntensity === "Power"
+                          ? currentLT2.Power?.toFixed(0)
+                          : currentLT2.Speed?.toFixed(1)}
+                        {availableIntensity === "Power" ? " W" : " km/h"}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {availableIntensity === "Power"
+                          ? calcLT2.Power?.toFixed(0)
+                          : calcLT2.Speed?.toFixed(1)}
+                        {availableIntensity === "Power" ? " W" : " km/h"}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold">
+                        {formatDelta(
+                          rcDelta.intensity,
+                          availableIntensity === "Power" ? "W" : "km/h",
+                          availableIntensity === "Power" ? 0 : 1,
+                        )}
                       </td>
                     </tr>
                     <tr>
@@ -1054,19 +1151,35 @@ export default function Home() {
               <div className="flex items-center space-x-2">
                 <Gauge className="w-3 h-3 text-green-600" />
                 <span>
-                  <b>Speed:</b> {currentLT1.Speed?.toFixed(1)} km/h
+                  <b>{availableIntensity}:</b>{" "}
+                  {availableIntensity === "Power"
+                    ? currentLT1.Power?.toFixed(0)
+                    : currentLT1.Speed?.toFixed(1)}{" "}
+                  {availableIntensity === "Power" ? "W" : "km/h"}
+                  {calcLT1 && (
+                    <>
+                      {" "}
+                      (Calc:{" "}
+                      {availableIntensity === "Power"
+                        ? calcLT1.Power?.toFixed(0)
+                        : calcLT1.Speed?.toFixed(1)}{" "}
+                      {availableIntensity === "Power" ? "W" : "km/h"})
+                    </>
+                  )}
                 </span>
               </div>
               <div className="flex items-center space-x-2">
                 <div className="w-3 h-3 border-2 border-green-600 rounded-full" />
                 <span>
                   <b>HR:</b> {currentLT1.HR?.toFixed(0)} bpm
+                  {calcLT1 && <> (Calc: {calcLT1.HR?.toFixed(0)} bpm)</>}
                 </span>
               </div>
               <div className="flex items-center space-x-2">
                 <div className="w-3 h-3 border-2 border-blue-600 rounded-full" />
                 <span>
                   <b>VO2:</b> {currentLT1.VO2?.toFixed(0)} ml/min
+                  {calcLT1 && <> (Calc: {calcLT1.VO2?.toFixed(0)} ml/min)</>}
                 </span>
               </div>
               <div className="flex items-center space-x-2">
@@ -1146,19 +1259,35 @@ export default function Home() {
               <div className="flex items-center space-x-2">
                 <Gauge className="w-3 h-3 text-orange-600" />
                 <span>
-                  <b>Speed:</b> {currentLT2.Speed?.toFixed(1)} km/h
+                  <b>{availableIntensity}:</b>{" "}
+                  {availableIntensity === "Power"
+                    ? currentLT2.Power?.toFixed(0)
+                    : currentLT2.Speed?.toFixed(1)}{" "}
+                  {availableIntensity === "Power" ? "W" : "km/h"}
+                  {calcLT2 && (
+                    <>
+                      {" "}
+                      (Calc:{" "}
+                      {availableIntensity === "Power"
+                        ? calcLT2.Power?.toFixed(0)
+                        : calcLT2.Speed?.toFixed(1)}{" "}
+                      {availableIntensity === "Power" ? "W" : "km/h"})
+                    </>
+                  )}
                 </span>
               </div>
               <div className="flex items-center space-x-2">
                 <div className="w-3 h-3 border-2 border-orange-600 rounded-full" />
                 <span>
                   <b>HR:</b> {currentLT2.HR?.toFixed(0)} bpm
+                  {calcLT2 && <> (Calc: {calcLT2.HR?.toFixed(0)} bpm)</>}
                 </span>
               </div>
               <div className="flex items-center space-x-2">
                 <div className="w-3 h-3 border-2 border-blue-600 rounded-full" />
                 <span>
                   <b>VO2:</b> {currentLT2.VO2?.toFixed(0)} ml/min
+                  {calcLT2 && <> (Calc: {calcLT2.VO2?.toFixed(0)} ml/min)</>}
                 </span>
               </div>
               <div className="flex items-center space-x-2">
@@ -1242,7 +1371,11 @@ export default function Home() {
               <div className="flex items-center space-x-2">
                 <Gauge className="w-3 h-3 text-red-600" />
                 <span>
-                  <b>Speed:</b> {currentMax.Speed?.toFixed(1)} km/h
+                  <b>{availableIntensity}:</b>{" "}
+                  {availableIntensity === "Power"
+                    ? currentMax.Power?.toFixed(0)
+                    : currentMax.Speed?.toFixed(1)}{" "}
+                  {availableIntensity === "Power" ? "W" : "km/h"}
                 </span>
               </div>
               <div className="flex items-center space-x-2">
@@ -1393,15 +1526,15 @@ export default function Home() {
                   Time
                 </button>
                 <button
-                  onClick={() => setXAxisMode("Speed")}
+                  onClick={() => setXAxisMode(availableIntensity)}
                   className={`flex items-center px-3 py-1.5 text-xs font-medium rounded-md transition-all ${
-                    xAxisMode === "Speed"
+                    xAxisMode === availableIntensity
                       ? "bg-white text-blue-600 shadow-sm"
                       : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
                   <Gauge className="w-3.5 h-3.5 mr-1.5" />
-                  Speed
+                  {availableIntensity}
                 </button>
               </div>
 
