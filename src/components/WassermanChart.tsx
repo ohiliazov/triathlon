@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
-import { Info } from "lucide-react";
+import { useMemo, useState, useEffect } from "react";
+import { Info, Maximize2, X } from "lucide-react";
 
 const Plot = dynamic(() => import("react-plotly.js"), {
   ssr: false,
@@ -179,6 +179,18 @@ export function WassermanChart({
   thresholds,
 }: WassermanChartProps) {
   const [showTooltip, setShowTooltip] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    if (isExpanded) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "unset";
+    }
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, [isExpanded]);
 
   const plotData = useMemo(() => {
     const traces: any[] = [];
@@ -551,24 +563,26 @@ export function WassermanChart({
 
     const baseLayout = {
       autosize: true,
-      height: CHART_HEIGHT,
-      margin: {
-        l: CHART_MARGIN_L,
-        r: CHART_MARGIN_R,
-        t: CHART_MARGIN_T,
-        b: CHART_MARGIN_B,
-      },
+      height: isExpanded ? undefined : CHART_HEIGHT,
+      margin: isExpanded
+        ? { l: 80, r: 40, t: 60, b: 120 }
+        : {
+            l: CHART_MARGIN_L,
+            r: CHART_MARGIN_R,
+            t: CHART_MARGIN_T,
+            b: CHART_MARGIN_B,
+          },
       showlegend: true,
       legend: {
         orientation: "h" as const,
         x: LEGEND_X,
-        y: LEGEND_Y,
+        y: isExpanded ? -0.1 : LEGEND_Y,
         xanchor: "center" as const,
         yanchor: "top" as const,
         bgcolor: "rgba(255, 255, 255, 0.7)",
         bordercolor: "#e5e7eb",
         borderwidth: 1,
-        font: { size: LEGEND_FONT_SIZE },
+        font: { size: isExpanded ? 12 : LEGEND_FONT_SIZE },
       },
       hovermode: "x unified" as const,
       hoverlabel: { bgcolor: "rgba(255, 255, 255, 0.9)" },
@@ -584,8 +598,13 @@ export function WassermanChart({
         linecolor: "#d1d5db",
         zeroline: false,
         ticks: "outside" as const,
-        tickfont: { size: AXIS_TICK_FONT_SIZE },
-        title: { font: { size: AXIS_TITLE_FONT_SIZE, color: "#374151" } },
+        tickfont: { size: isExpanded ? 12 : AXIS_TICK_FONT_SIZE },
+        title: {
+          font: {
+            size: isExpanded ? 14 : AXIS_TITLE_FONT_SIZE,
+            color: "#374151",
+          },
+        },
         ...(normalizedConfigLayout?.xaxis || {}),
       },
       yaxis: {
@@ -595,9 +614,14 @@ export function WassermanChart({
         linecolor: "#d1d5db",
         zeroline: false,
         ticks: "outside" as const,
-        tickfont: { size: AXIS_TICK_FONT_SIZE },
+        tickfont: { size: isExpanded ? 12 : AXIS_TICK_FONT_SIZE },
         tickformat: ".2f",
-        title: { font: { size: AXIS_TITLE_FONT_SIZE, color: "#374151" } },
+        title: {
+          font: {
+            size: isExpanded ? 14 : AXIS_TITLE_FONT_SIZE,
+            color: "#374151",
+          },
+        },
         ...(normalizedConfigLayout?.yaxis || {}),
       },
     };
@@ -680,47 +704,89 @@ export function WassermanChart({
       shapes: [...shapes, ...externalShapes],
       annotations: [...annotations, ...externalAnnotations],
     };
-  }, [title, config, thresholds, data]);
+  }, [title, config, thresholds, data, isExpanded]);
+
+  const chartContent = (
+    <Plot
+      data={plotData}
+      layout={layout}
+      config={{
+        responsive: true,
+        displayModeBar: isExpanded,
+      }}
+      className="w-full h-full"
+      style={isExpanded ? { height: "calc(100vh - 180px)" } : {}}
+    />
+  );
 
   return (
-    <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-3 transition-all hover:shadow-md relative group">
-      <div className="flex items-center justify-between mb-2 px-1">
-        <h3
-          className="text-sm font-semibold text-gray-900 truncate pr-6"
-          title={title}
-        >
-          {title}
-        </h3>
-        {description && (
-          <div className="relative">
-            <button
-              onMouseEnter={() => setShowTooltip(true)}
-              onMouseLeave={() => setShowTooltip(false)}
-              className="text-gray-400 hover:text-blue-500 transition-colors"
-            >
-              <Info className="w-4 h-4" />
-            </button>
-            {showTooltip && (
-              <div className="absolute right-0 bottom-full mb-2 w-64 p-3 bg-gray-900 text-white text-[11px] rounded-lg shadow-xl z-50">
-                <div className="font-bold mb-1 border-b border-gray-700 pb-1 text-blue-400 uppercase tracking-wider">
-                  Physiological Insight
-                </div>
-                <div className="leading-relaxed opacity-90">{description}</div>
-                <div className="absolute right-2 top-full w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-gray-900"></div>
+    <>
+      <div className="w-full bg-white rounded-lg shadow-sm border border-gray-200 p-3 transition-all hover:shadow-md relative group">
+        <div className="flex items-center justify-between mb-2 px-1">
+          <h3
+            className="text-sm font-semibold text-gray-900 truncate pr-6"
+            title={title}
+          >
+            {title}
+          </h3>
+          <div className="flex items-center space-x-2">
+            {description && (
+              <div className="relative">
+                <button
+                  onMouseEnter={() => setShowTooltip(true)}
+                  onMouseLeave={() => setShowTooltip(false)}
+                  className="text-gray-400 hover:text-blue-500 transition-colors"
+                >
+                  <Info className="w-4 h-4" />
+                </button>
+                {showTooltip && (
+                  <div className="absolute right-0 bottom-full mb-2 w-64 p-3 bg-gray-900 text-white text-[11px] rounded-lg shadow-xl z-50">
+                    <div className="font-bold mb-1 border-b border-gray-700 pb-1 text-blue-400 uppercase tracking-wider">
+                      Physiological Insight
+                    </div>
+                    <div className="leading-relaxed opacity-90">
+                      {description}
+                    </div>
+                    <div className="absolute right-2 top-full w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-gray-900"></div>
+                  </div>
+                )}
               </div>
             )}
+            <button
+              onClick={() => setIsExpanded(true)}
+              className="p-1 hover:bg-gray-100 rounded transition-colors text-gray-400 hover:text-gray-600"
+              title="Enlarge Chart"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
           </div>
-        )}
+        </div>
+        {chartContent}
       </div>
-      <Plot
-        data={plotData}
-        layout={layout}
-        config={{
-          responsive: true,
-          displayModeBar: false,
-        }}
-        className="w-full"
-      />
-    </div>
+
+      {isExpanded && (
+        <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 md:p-8">
+          <div className="bg-white w-full max-w-7xl h-full max-h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <div className="flex flex-col">
+                <h3 className="text-xl font-bold text-gray-900">{title}</h3>
+                {description && (
+                  <p className="text-sm text-gray-500 mt-1">{description}</p>
+                )}
+              </div>
+              <button
+                onClick={() => setIsExpanded(false)}
+                className="p-2 hover:bg-gray-100 rounded-xl transition-colors text-gray-500"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="flex-1 p-6 overflow-hidden">
+              <div className="w-full h-full">{chartContent}</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
