@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Timer,
@@ -19,11 +20,13 @@ import {
   ChartSettings,
   prepareActivityChartData,
 } from "@/lib/activityUtils";
-import FitFileUploader from "@/components/FitFileUploader";
 import { ActivityChart } from "@/components/ActivityChart";
 import { LapsTable } from "@/components/LapsTable";
+import { useAppContext } from "@/context/AppContext";
 
 export default function ActivitiesPage() {
+  const { activityData, setActivityData } = useAppContext();
+  const router = useRouter();
   const [activity, setActivity] = useState<ProcessedActivity | null>(null);
   const [settings, setSettings] = useState<ChartSettings>({
     smoothingWindow: 10,
@@ -34,6 +37,18 @@ export default function ActivitiesPage() {
     xAxisType: "time",
   });
   const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    if (!activityData) {
+      router.replace("/");
+    }
+  }, [activityData, router]);
+
+  useEffect(() => {
+    if (activityData && !activity) {
+      setActivity(activityData);
+    }
+  }, [activityData, activity]);
 
   useEffect(() => {
     if (activity) {
@@ -51,41 +66,17 @@ export default function ActivitiesPage() {
     setRevision((r) => r + 1);
   }, [settings, activity]);
 
-  const reset = () => setActivity(null);
+  const reset = () => {
+    setActivity(null);
+    setActivityData(null);
+    router.push("/");
+  };
 
   const charts = useMemo(() => {
     return prepareActivityChartData(activity!, settings);
   }, [activity, settings]);
 
-  // If no activity loaded, show upload view
-  if (!activity) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-8 flex flex-col items-center justify-center">
-        <Link
-          href="/"
-          className="flex items-center text-sm text-gray-500 hover:text-blue-600 mb-8 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4 mr-1" />
-          Back to Dashboard
-        </Link>
-
-        <div className="max-w-2xl w-full">
-          <div className="text-center mb-10">
-            <h1 className="text-4xl font-bold text-gray-900 mb-3 tracking-tight">
-              Activity Analysis
-            </h1>
-            <p className="text-lg text-gray-600">
-              Upload your FIT file to see detailed performance metrics and
-              charts.
-            </p>
-          </div>
-          <FitFileUploader onActivityLoaded={setActivity} />
-        </div>
-      </div>
-    );
-  }
-
-  if (!charts) return null;
+  if (!activity || !charts) return null;
 
   // Activity stats
   const stats = {
