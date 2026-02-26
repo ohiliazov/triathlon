@@ -159,14 +159,14 @@ interface WassermanChartProps {
   config: any;
   isSteadyMode?: boolean;
   thresholds?: {
-    at: number; // in minutes
-    rc: number; // in minutes
-    max?: number; // in minutes
-    fatMax?: number; // in minutes
-    fatMaxHr?: number; // Heart rate at FatMax
-    calculatedAt?: number;
-    calculatedRc?: number;
-    calculatedMax?: number;
+    at: number | null; // in minutes
+    rc: number | null; // in minutes
+    max?: number | null; // in minutes
+    fatMax?: number | null; // in minutes
+    fatMaxHr?: number | null; // Heart rate at FatMax
+    calculatedAt?: number | null;
+    calculatedRc?: number | null;
+    calculatedMax?: number | null;
   };
 }
 
@@ -360,55 +360,57 @@ export function WassermanChart({
       // 2. Piecewise V-Slope Regression
       if (thresholds) {
         const atTime = thresholds.calculatedAt || thresholds.at;
-        const atPoint = data.find((d) => d.minutes >= atTime) || data[0];
-        const atVO2 = atPoint.VO2 || 0;
+        if (atTime !== null) {
+          const atPoint = data.find((d) => d.minutes >= atTime) || data[0];
+          const atVO2 = atPoint.VO2 || 0;
 
-        const leftData = data.filter(
-          (d) => d.VO2 <= atVO2 && d.minutes <= atTime,
-        );
-        const rightData = data.filter(
-          (d) =>
-            d.VO2 >= atVO2 &&
-            d.minutes >= atTime &&
-            d.minutes <= (thresholds.max || 999),
-        );
+          const leftData = data.filter(
+            (d) => d.VO2 <= atVO2 && d.minutes <= atTime,
+          );
+          const rightData = data.filter(
+            (d) =>
+              d.VO2 >= atVO2 &&
+              d.minutes >= atTime &&
+              d.minutes <= (thresholds.max || 999),
+          );
 
-        const leftReg = calculateLinearRegression(leftData, "VO2", "VCO2");
-        const rightReg = calculateLinearRegression(rightData, "VO2", "VCO2");
+          const leftReg = calculateLinearRegression(leftData, "VO2", "VCO2");
+          const rightReg = calculateLinearRegression(rightData, "VO2", "VCO2");
 
-        if (leftReg) {
-          traces.push({
-            x: [leftReg.xMin, atVO2],
-            y: [
-              leftReg.m * leftReg.xMin + leftReg.b,
-              leftReg.m * atVO2 + leftReg.b,
-            ],
-            mode: "lines",
-            name: "V-Slope (Pre-AT)",
-            line: {
-              color: "#0053a4",
-              width: REGRESSION_LINE_WIDTH,
-              dash: "dot",
-            },
-            type: "scatter",
-          });
-        }
-        if (rightReg) {
-          traces.push({
-            x: [atVO2, rightReg.xMax],
-            y: [
-              rightReg.m * atVO2 + rightReg.b,
-              rightReg.m * rightReg.xMax + rightReg.b,
-            ],
-            mode: "lines",
-            name: "V-Slope (Post-AT)",
-            line: {
-              color: "#c00000",
-              width: REGRESSION_LINE_WIDTH,
-              dash: "dot",
-            },
-            type: "scatter",
-          });
+          if (leftReg) {
+            traces.push({
+              x: [leftReg.xMin, atVO2],
+              y: [
+                leftReg.m * leftReg.xMin + leftReg.b,
+                leftReg.m * atVO2 + leftReg.b,
+              ],
+              mode: "lines",
+              name: "V-Slope (Pre-AT)",
+              line: {
+                color: "#0053a4",
+                width: REGRESSION_LINE_WIDTH,
+                dash: "dot",
+              },
+              type: "scatter",
+            });
+          }
+          if (rightReg) {
+            traces.push({
+              x: [atVO2, rightReg.xMax],
+              y: [
+                rightReg.m * atVO2 + rightReg.b,
+                rightReg.m * rightReg.xMax + rightReg.b,
+              ],
+              mode: "lines",
+              name: "V-Slope (Post-AT)",
+              line: {
+                color: "#c00000",
+                width: REGRESSION_LINE_WIDTH,
+                dash: "dot",
+              },
+              type: "scatter",
+            });
+          }
         }
       }
     }

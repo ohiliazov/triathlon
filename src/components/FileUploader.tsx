@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { Upload, FileUp, Loader2 } from "lucide-react";
+import { LabTestPayload } from "@/context/AppContext";
 
 interface FileUploaderProps {
-  onDataLoaded: (payload: any) => void;
+  onDataLoaded: (payload: LabTestPayload) => void;
 }
 
 export default function FileUploader({ onDataLoaded }: FileUploaderProps) {
@@ -58,10 +59,18 @@ export default function FileUploader({ onDataLoaded }: FileUploaderProps) {
           )}
         </div>
         <div className="text-center">
-          <h3 className="text-xl font-semibold text-gray-800">Upload Lab Test Data</h3>
-          <p className="text-sm text-gray-500 mt-1">Accepts .xlsx or .xls files from lab tests</p>
+          <h3 className="text-xl font-semibold text-gray-800">
+            Upload Lab Test Data
+          </h3>
+          <p className="text-sm text-gray-500 mt-1">
+            Accepts .xlsx or .xls files from lab tests
+          </p>
         </div>
-        <label className={`inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg cursor-pointer hover:bg-blue-700 transition-colors ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+        <label
+          className={`inline-flex items-center px-6 py-3 bg-blue-600 text-white font-medium rounded-lg cursor-pointer hover:bg-blue-700 transition-colors ${
+            isUploading ? "opacity-50 cursor-not-allowed" : ""
+          }`}
+        >
           <Upload className="w-5 h-5 mr-2" />
           {isUploading ? "Processing..." : "Select File"}
           <input
@@ -72,7 +81,9 @@ export default function FileUploader({ onDataLoaded }: FileUploaderProps) {
             disabled={isUploading}
           />
         </label>
-        {error && <p className="text-red-500 text-sm font-medium mt-2">{error}</p>}
+        {error && (
+          <p className="text-red-500 text-sm font-medium mt-2">{error}</p>
+        )}
       </div>
     </div>
   );

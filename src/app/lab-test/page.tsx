@@ -71,39 +71,39 @@ export default function LabTestPage() {
   }, [isSteadyMode, steadyData, data]);
 
   const currentLT1 = useMemo(() => {
-    if (!data || !thresholds) return null;
-    return data.find((d) => d.minutes >= thresholds.at) || data[0];
+    if (!data || !thresholds || thresholds.at === null) return null;
+    return data.find((d) => d.minutes >= thresholds.at!) || data[0];
   }, [data, thresholds]);
 
   const calcLT1 = useMemo(() => {
     const t = thresholds?.calculatedAt;
-    if (!data || t === undefined) return null;
+    if (!data || t == null) return null;
     return data.find((d) => d.minutes >= t) || data[0];
   }, [data, thresholds]);
 
   const currentLT2 = useMemo(() => {
-    if (!data || !thresholds) return null;
+    if (!data || !thresholds || thresholds.rc === null) return null;
     return (
-      data.find((d) => d.minutes >= thresholds.rc) || data[data.length - 1]
+      data.find((d) => d.minutes >= thresholds.rc!) || data[data.length - 1]
     );
   }, [data, thresholds]);
 
   const calcLT2 = useMemo(() => {
     const rc = thresholds?.calculatedRc;
-    if (!data || rc === undefined) return null;
+    if (!data || rc == null) return null;
     return data.find((d) => d.minutes >= rc) || data[data.length - 1];
   }, [data, thresholds]);
 
   const currentMax = useMemo(() => {
-    if (!data || !thresholds) return null;
+    if (!data || !thresholds || thresholds.max === null) return null;
     return (
-      data.find((d) => d.minutes >= thresholds.max) || data[data.length - 1]
+      data.find((d) => d.minutes >= thresholds.max!) || data[data.length - 1]
     );
   }, [data, thresholds]);
 
   const calcMax = useMemo(() => {
     const mx = thresholds?.calculatedMax;
-    if (!data || mx === undefined) return null;
+    if (!data || mx == null) return null;
     return data.find((d) => d.minutes >= mx) || data[data.length - 1];
   }, [data, thresholds]);
 
@@ -803,7 +803,11 @@ export default function LabTestPage() {
       !currentLT1 ||
       !calcLT1 ||
       !currentLT2 ||
-      !calcLT2
+      !calcLT2 ||
+      !currentMax ||
+      thresholds.at === null ||
+      thresholds.rc === null ||
+      thresholds.max === null
     )
       return null;
 
@@ -848,7 +852,7 @@ export default function LabTestPage() {
     };
 
     const atDelta = {
-      time: thresholds.at - (thresholds.calculatedAt || 0),
+      time: thresholds.at! - (thresholds.calculatedAt || 0),
       hr: (currentLT1.HR || 0) - (calcLT1.HR || 0),
       vo2: (currentLT1.VO2 || 0) - (calcLT1.VO2 || 0),
       intensity:
@@ -857,7 +861,7 @@ export default function LabTestPage() {
     };
 
     const rcDelta = {
-      time: thresholds.rc - (thresholds.calculatedRc || 0),
+      time: thresholds.rc! - (thresholds.calculatedRc || 0),
       hr: (currentLT2.HR || 0) - (calcLT2.HR || 0),
       vo2: (currentLT2.VO2 || 0) - (calcLT2.VO2 || 0),
       intensity:
@@ -866,7 +870,7 @@ export default function LabTestPage() {
     };
 
     const maxDelta = {
-      time: thresholds.max - (thresholds.calculatedMax || thresholds.max),
+      time: thresholds.max! - (thresholds.calculatedMax || thresholds.max!),
       hr: (currentMax.HR || 0) - (calcMax?.HR || currentMax.HR || 0),
       vo2: (currentMax.VO2 || 0) - (calcMax?.VO2 || currentMax.VO2 || 0),
       intensity:
@@ -913,19 +917,24 @@ export default function LabTestPage() {
                     <tr>
                       <td className="px-4 py-3 font-medium">Time</td>
                       <td className="px-4 py-3 text-right">
-                        {Math.floor(thresholds.at)}:
-                        {((thresholds.at % 1) * 60).toFixed(0).padStart(2, "0")}
+                        {Math.floor(thresholds.at!)}:
+                        {((thresholds.at! % 1) * 60)
+                          .toFixed(0)
+                          .padStart(2, "0")}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {Math.floor(thresholds.calculatedAt || thresholds.at)}:
-                        {(((thresholds.calculatedAt || thresholds.at) % 1) * 60)
+                        {Math.floor(thresholds.calculatedAt || thresholds.at!)}:
+                        {(
+                          ((thresholds.calculatedAt || thresholds.at!) % 1) *
+                          60
+                        )
                           .toFixed(0)
                           .padStart(2, "0")}
                       </td>
                       <td className="px-4 py-3 text-right font-bold">
                         {formatTimeDelta(
-                          thresholds.at,
-                          thresholds.calculatedAt || thresholds.at,
+                          thresholds.at!,
+                          thresholds.calculatedAt || thresholds.at!,
                         )}
                       </td>
                     </tr>
@@ -1002,19 +1011,24 @@ export default function LabTestPage() {
                     <tr>
                       <td className="px-4 py-3 font-medium">Time</td>
                       <td className="px-4 py-3 text-right">
-                        {Math.floor(thresholds.rc)}:
-                        {((thresholds.rc % 1) * 60).toFixed(0).padStart(2, "0")}
+                        {Math.floor(thresholds.rc!)}:
+                        {((thresholds.rc! % 1) * 60)
+                          .toFixed(0)
+                          .padStart(2, "0")}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {Math.floor(thresholds.calculatedRc || thresholds.rc)}:
-                        {(((thresholds.calculatedRc || thresholds.rc) % 1) * 60)
+                        {Math.floor(thresholds.calculatedRc || thresholds.rc!)}:
+                        {(
+                          ((thresholds.calculatedRc || thresholds.rc!) % 1) *
+                          60
+                        )
                           .toFixed(0)
                           .padStart(2, "0")}
                       </td>
                       <td className="px-4 py-3 text-right font-bold">
                         {formatTimeDelta(
-                          thresholds.rc,
-                          thresholds.calculatedRc || thresholds.rc,
+                          thresholds.rc!,
+                          thresholds.calculatedRc || thresholds.rc!,
                         )}
                       </td>
                     </tr>

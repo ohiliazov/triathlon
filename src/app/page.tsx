@@ -3,20 +3,21 @@
 import FileUploader from "@/components/FileUploader";
 import FitFileUploader from "@/components/FitFileUploader";
 import { useRouter } from "next/navigation";
-import { useAppContext } from "@/context/AppContext";
+import { useAppContext, LabTestPayload } from "@/context/AppContext";
 import { Gauge, Activity } from "lucide-react";
+import { ProcessedActivity } from "@/lib/fitProcessor";
 
 export default function Home() {
   const { setLabTestData, setActivityData } = useAppContext();
   const router = useRouter();
 
-  const handleDataLoaded = (payload: any) => {
+  const handleDataLoaded = (payload: LabTestPayload) => {
     // Save in context and navigate to lab-test analysis route
     setLabTestData(payload);
     router.push("/lab-test");
   };
 
-  const handleActivityLoaded = (activity: any) => {
+  const handleActivityLoaded = (activity: ProcessedActivity) => {
     // Save in context and navigate to activities analysis route
     setActivityData(activity);
     router.push("/activities");
