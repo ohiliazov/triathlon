@@ -18,8 +18,8 @@ services:
 
   backend:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: triathlon-backend
     environment:
       DATABASE_URL: postgresql://triathlon_user:triathlon_password@db:5432/triathlon_db
@@ -31,10 +31,10 @@ services:
 
   frontend:
     build:
-      context: .
-      dockerfile: frontend/Dockerfile
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: triathlon-frontend
-    env_file: .env.local
+    env_file: ./frontend/.env.local
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
       AUTH_TRUST_HOST: "true"

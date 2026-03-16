@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-install-project --no-dev
 
 # Copy the application code
-COPY backend/ ./backend/
+COPY . .
 
 # Sync the project (installs the current project)
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -30,7 +30,7 @@ WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
 
 # Copy the application code
-COPY backend/ ./backend/
+COPY . .
 
 # Set environment variables
 ENV PATH="/app/.venv/bin:$PATH" \
@@ -41,4 +41,4 @@ ENV PATH="/app/.venv/bin:$PATH" \
 EXPOSE 8000
 
 # Run the application
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

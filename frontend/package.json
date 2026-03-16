@@ -4,12 +4,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "frontend:dev": "next dev frontend",
-    "frontend:build": "next build frontend",
-    "frontend:start": "next start frontend",
-    "frontend:lint": "eslint -c frontend/eslint.config.mjs frontend",
-    "backend:dev": "uv run uvicorn backend.app.main:app --reload",
-    "dev": "concurrently \"npm run frontend:dev\" \"npm run backend:dev\"",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
     "test": "vitest run"
   },
   "dependencies": {

@@ -19,6 +19,7 @@ repos:
     rev: 0.9.27
     hooks:
       - id: uv-lock
+        args: ["--directory", "backend"]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.5
@@ -37,7 +38,7 @@ repos:
     rev: v9.19.0
     hooks:
       - id: eslint
-        args: [--fix, --config, eslint.config.mjs]
+        args: [--fix, --config, frontend/eslint.config.mjs]
         additional_dependencies:
           - eslint@^9
           - eslint-config-next@16.1.6

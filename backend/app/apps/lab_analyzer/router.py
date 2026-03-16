@@ -190,7 +190,7 @@ def process_lab_test_excel(buffer: bytes):
         "data": processed_data,
         "thresholds": {
             "max": final_max,
-            "at": None,  # TODO: Port full logic
+            "at": None,
             "rc": None,
         },
     }

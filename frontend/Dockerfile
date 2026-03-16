@@ -8,14 +8,13 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 # Copy the frontend code
-COPY frontend/ ./frontend/
+COPY . .
 
 # Set environment variables for build
 ENV NEXT_TELEMETRY_DISABLED 1
 
 # Build the application
-# Executing npm run frontend:build which translates to "next build frontend"
-RUN npm run frontend:build
+RUN npm run build
 
 # Runner stage
 FROM node:20-slim AS runner
@@ -32,11 +31,10 @@ COPY package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
 # Copy the build artifacts and frontend source
-COPY --from=builder /app/frontend ./frontend
+COPY --from=builder /app ./
 
 # Expose the port
 EXPOSE 3000
 
 # Start the application
-# Executing npm run frontend:start which translates to "next start frontend"
-CMD ["npm", "run", "frontend:start"]
+CMD ["npm", "run", "start"]
