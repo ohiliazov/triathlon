@@ -2,7 +2,7 @@ from typing import Optional
 
 from sqlmodel import Field
 
-from backend.app.models.base import TimestampModel
+from app.models.base import TimestampModel
 
 
 class LabTest(TimestampModel, table=True):

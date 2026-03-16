@@ -22,15 +22,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 # Runtime stage
-FROM python:3.13-slim-bookworm
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS runtime
 
 WORKDIR /app
 
-# Copy the virtual environment from the builder
-COPY --from=builder /app/.venv /app/.venv
-
-# Copy the application code
-COPY . .
+# Copy the virtual environment and application from the builder
+COPY --from=builder /app /app
 
 # Set environment variables
 ENV PATH="/app/.venv/bin:$PATH" \
@@ -41,4 +38,4 @@ ENV PATH="/app/.venv/bin:$PATH" \
 EXPOSE 8000
 
 # Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

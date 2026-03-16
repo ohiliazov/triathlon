@@ -1,20 +1,25 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.apps.bike_fit import router as bike_fit_router
-from backend.app.apps.fit_analyzer import router as fit_analyzer_router
-from backend.app.apps.lab_analyzer import router as lab_analyzer_router
-from backend.app.database.core import create_db_and_tables
+from app.apps.bike_fit import router as bike_fit_router
+from app.apps.fit_analyzer import router as fit_analyzer_router
+from app.apps.lab_analyzer import router as lab_analyzer_router
+from app.database.core import create_db_and_tables
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    create_db_and_tables()
+    yield
+
 
 app = FastAPI(
     title="Triathlon API",
     description="API for Fit File, Lab Test, and Bike Fit Analysis",
+    lifespan=lifespan,
 )
-
-
-@app.on_event("startup")
-def on_startup():
-    create_db_and_tables()
 
 
 # Configure CORS

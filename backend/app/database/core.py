@@ -4,7 +4,7 @@ from sqlmodel import Session, SQLModel, create_engine
 
 # Import all models here to ensure they are registered in SQLModel.metadata
 
-# from backend.app.apps.fit_analyzer.models import Activity # if exists later
+# from app.apps.fit_analyzer.models import Activity # if exists later
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./triathlon.db")
 
