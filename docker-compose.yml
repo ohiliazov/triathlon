@@ -25,6 +25,10 @@ services:
       DATABASE_URL: postgresql://triathlon_user:triathlon_password@db:5432/triathlon_db
     ports:
       - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+    command: uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       db:
         condition: service_healthy
@@ -38,8 +42,15 @@ services:
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000
       AUTH_TRUST_HOST: "true"
+      WATCHPACK_POLLING: "true"
+      NODE_ENV: development
     ports:
       - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
     depends_on:
       - backend
 

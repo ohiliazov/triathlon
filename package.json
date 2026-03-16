@@ -1,0 +1,21 @@
+{
+  "name": "triathlon-root",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "frontend:dev": "npm --prefix frontend run dev",
+    "frontend:build": "npm --prefix frontend run build",
+    "frontend:start": "npm --prefix frontend run start",
+    "frontend:lint": "npm --prefix frontend run lint",
+    "backend:dev": "uv --directory backend run uvicorn app.main:app --reload",
+    "dev": "concurrently \"npm run frontend:dev\" \"npm run backend:dev\"",
+    "test": "npm --prefix frontend run test",
+    "lint": "npm run frontend:lint && uv --directory backend run ruff check .",
+    "parse-fit": "uv --directory backend run python scripts/parse_fit_files.py"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
