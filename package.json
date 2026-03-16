@@ -4,10 +4,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
+    "frontend:dev": "next dev frontend",
+    "frontend:build": "next build frontend",
+    "frontend:start": "next start frontend",
+    "frontend:lint": "eslint -c frontend/eslint.config.mjs frontend",
+    "backend:dev": "uv run uvicorn backend.app.main:app --reload",
+    "dev": "concurrently \"npm run frontend:dev\" \"npm run backend:dev\"",
     "test": "vitest run"
   },
   "dependencies": {
@@ -16,6 +18,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^0.575.0",
     "next": "16.1.6",
+    "next-auth": "^5.0.0-beta.30",
     "plotly.js": "^3.3.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -24,6 +27,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20.19.33",
     "@types/react": "^19",

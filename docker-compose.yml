@@ -1,0 +1,47 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: triathlon-db
+    environment:
+      POSTGRES_USER: triathlon_user
+      POSTGRES_PASSWORD: triathlon_password
+      POSTGRES_DB: triathlon_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U triathlon_user -d triathlon_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: triathlon-backend
+    environment:
+      DATABASE_URL: postgresql://triathlon_user:triathlon_password@db:5432/triathlon_db
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: triathlon-frontend
+    env_file: .env.local
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      AUTH_TRUST_HOST: "true"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

@@ -1,0 +1,13 @@
+node_modules
+.next
+.venv
+__pycache__
+*.pyc
+.git
+.idea
+.DS_Store
+*.db
+downloads
+frontend/.next
+frontend/node_modules
+backend/__pycache__

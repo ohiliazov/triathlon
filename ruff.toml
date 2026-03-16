@@ -1,0 +1,6 @@
+line-length = 79
+lint.extend-select = ["PIE790", "I001"]
+
+[lint.isort]
+combine-as-imports = true
+split-on-trailing-comma = false

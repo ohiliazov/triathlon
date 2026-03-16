@@ -1,47 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Triathlon Performance Analytics
+
+This project is split into a **Next.js Frontend** and a **FastAPI Backend**.
+
+## Project Structure
+
+- `frontend/`: Next.js web application.
+- `backend/`: FastAPI Python application for data processing and database.
+- `package.json`: Main project configuration for frontend and common scripts.
+- `pyproject.toml`: Python dependencies and backend configuration.
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js & npm
+- Python 3.13+
+- [uv](https://github.com/astral-sh/uv) (recommended) or pip
+
+### Installation
+
+1. Install frontend dependencies:
+   ```bash
+   npm install
+   ```
+
+2. Install backend dependencies:
+   ```bash
+   uv sync
+   # or
+   pip install -e .
+   ```
+
+### Running the Development Environment
+
+You can run both the frontend and backend simultaneously using:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- Backend API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Docker Support
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+You can run the entire stack (Frontend, Backend, and PostgreSQL database) using Docker Compose:
+
+1. **Build and start the containers:**
+   ```bash
+   docker compose up --build
+   ```
+
+2. **Access the applications:**
+   - Frontend: [http://localhost:3000](http://localhost:3000)
+   - Backend API: [http://localhost:8000](http://localhost:8000)
+   - API Documentation: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+3. **Stop the containers:**
+   ```bash
+   docker compose down
+   ```
+
+## Sub-applications
+
+- **FIT File Analyzer**: Processes Garmin/Wahoo .fit files for heart rate, pace, and power analysis.
+- **Lab Test Analyzer**: Parses CPET laboratory Excel reports to calculate physiological thresholds (AT/RC) and metabolic efficiency.
+- **Bike Fit**: (In Development)
 
 ## Testing & Validation
 
-This project includes a validation suite to ensure physiological thresholds (AT/RC) are calculated accurately against real laboratory data.
-
-To run the tests:
+To run frontend tests:
 ```bash
 npm test
 ```
-
-The tests use `vitest` to process laboratory data and compare calculated vs. official thresholds.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
